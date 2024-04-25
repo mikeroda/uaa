@@ -1,16 +1,67 @@
 package org.cloudfoundry.identity.uaa.mock.token;
 
+import java.net.URI;
+import java.net.URL;
+import java.net.URLDecoder;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import javax.servlet.http.HttpSession;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.codec.Base64;
+import org.springframework.security.oauth2.common.OAuth2RefreshToken;
+import org.springframework.security.oauth2.common.exceptions.InvalidTokenException;
+import org.springframework.security.oauth2.common.util.OAuth2Utils;
+import org.springframework.security.oauth2.provider.AuthorizationRequest;
+import org.springframework.security.oauth2.provider.OAuth2Authentication;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.savedrequest.SavedRequest;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.ResultMatcher;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.StringUtils;
+import org.springframework.web.util.UriComponents;
+import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.UriUtils;
+
 import com.fasterxml.jackson.core.type.TypeReference;
-import org.apache.commons.collections.map.HashedMap;
-import org.apache.commons.httpclient.util.URIUtil;
+import org.apache.commons.collections4.map.HashedMap;
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.account.UserInfoResponse;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthenticationDetails;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.login.util.RandomValueStringGenerator;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.mock.util.OAuthToken;
 import org.cloudfoundry.identity.uaa.oauth.DisableIdTokenResponseTypeFilter;
 import org.cloudfoundry.identity.uaa.oauth.TokenEndpointBuilder;
@@ -27,13 +78,9 @@ import org.cloudfoundry.identity.uaa.oauth.token.CompositeToken;
 import org.cloudfoundry.identity.uaa.oauth.token.JdbcRevocableTokenProvisioning;
 import org.cloudfoundry.identity.uaa.oauth.token.RevocableToken;
 import org.cloudfoundry.identity.uaa.oauth.token.RevocableTokenProvisioning;
-import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
-import org.cloudfoundry.identity.uaa.provider.JdbcIdentityProviderProvisioning;
 import org.cloudfoundry.identity.uaa.provider.PasswordPolicy;
-import org.cloudfoundry.identity.uaa.provider.SamlIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.provider.UaaIdentityProviderDefinition;
-import org.cloudfoundry.identity.uaa.provider.saml.idp.SamlTestUtils;
 import org.cloudfoundry.identity.uaa.scim.ScimGroup;
 import org.cloudfoundry.identity.uaa.scim.ScimGroupMember;
 import org.cloudfoundry.identity.uaa.scim.ScimGroupMembershipManager;
@@ -57,60 +104,9 @@ import org.cloudfoundry.identity.uaa.zone.IdentityZoneProvisioning;
 import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
 import org.cloudfoundry.identity.uaa.zone.UserConfig;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.mock.web.MockHttpSession;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.codec.Base64;
-import org.springframework.security.oauth2.common.OAuth2RefreshToken;
-import org.springframework.security.oauth2.common.exceptions.InvalidTokenException;
-import org.springframework.security.oauth2.common.util.OAuth2Utils;
-import org.springframework.security.oauth2.provider.AuthorizationRequest;
-import org.springframework.security.oauth2.provider.OAuth2Authentication;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.savedrequest.SavedRequest;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.ResultMatcher;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.util.MultiValueMap;
-import org.springframework.util.StringUtils;
-import org.springframework.web.util.UriComponents;
-import org.springframework.web.util.UriComponentsBuilder;
-import org.springframework.web.util.UriUtils;
-
-import javax.servlet.http.HttpSession;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Collections;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 
 import static java.util.Collections.emptySet;
 import static org.cloudfoundry.identity.uaa.mock.util.JwtTokenUtils.getClaimsForToken;
@@ -122,13 +118,11 @@ import static org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants.CLIENT_ID
 import static org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants.JTI;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_AUTHORIZATION_CODE;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_PASSWORD;
-import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_SAML2_BEARER;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.ID_TOKEN_HINT_PROMPT;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.ID_TOKEN_HINT_PROMPT_NONE;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.REFRESH_TOKEN_SUFFIX;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.REQUEST_TOKEN_FORMAT;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.TokenFormat.OPAQUE;
-import static org.cloudfoundry.identity.uaa.provider.saml.idp.SamlTestUtils.createLocalSamlIdpDefinition;
 import static org.cloudfoundry.identity.uaa.web.UaaSavedRequestAwareAuthenticationSuccessHandler.FORM_REDIRECT_PARAMETER;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -152,7 +146,6 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.springframework.http.HttpHeaders.ACCEPT;
 import static org.springframework.http.HttpHeaders.CONTENT_TYPE;
-import static org.springframework.http.HttpHeaders.HOST;
 import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.http.MediaType.APPLICATION_JSON_UTF8_VALUE;
@@ -180,12 +173,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
     private String BADSECRET = "badsecret";
     protected RandomValueStringGenerator generator = new RandomValueStringGenerator();
-    private static SamlTestUtils samlTestUtils = new SamlTestUtils();
-
-    @BeforeAll
-    static void initializeSamlUtils() {
-        samlTestUtils.initializeSimple();
-    }
 
     @BeforeEach
     void setup() {
@@ -298,7 +285,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
 
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", "password,refresh_token", "uaa.resource", null);
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope", "password,refresh_token", "uaa.resource", null);
         clientDetails.setClientSecret(SECRET);
         clientDetailsService.addClientDetails(clientDetails);
         MvcResult result = doPasswordGrant(username, SECRET, clientId, SECRET, status().isOk());
@@ -326,7 +313,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         ScimUser user = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
 
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", GRANT_TYPE_AUTHORIZATION_CODE, "uaa.resource", "http://localhost");
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope", GRANT_TYPE_AUTHORIZATION_CODE, "uaa.resource", "http://localhost");
         clientDetails.setClientSecret(SECRET);
         clientDetails.addAdditionalInformation(REQUIRED_USER_GROUPS, Collections.singletonList("uaa.admin"));
         clientDetailsService.addClientDetails(clientDetails);
@@ -357,7 +344,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         ScimUser user = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
 
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "openid", GRANT_TYPE_AUTHORIZATION_CODE, "uaa.resource", "http://localhost");
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "openid", GRANT_TYPE_AUTHORIZATION_CODE, "uaa.resource", "http://localhost");
         clientDetails.setAutoApproveScopes(Collections.singletonList("true"));
         clientDetails.setClientSecret(SECRET);
         clientDetailsService.addClientDetails(clientDetails);
@@ -408,7 +395,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
 
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", "password", "uaa.resource", null);
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope", "password", "uaa.resource", null);
         clientDetails.setClientSecret(SECRET);
         clientDetails.addAdditionalInformation(REQUIRED_USER_GROUPS, Collections.singletonList("uaa.admin"));
         clientDetailsService.addClientDetails(clientDetails);
@@ -429,7 +416,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
 
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope,required.scope.1,required.scope.2", "password", "uaa.resource", null);
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope,required.scope.1,required.scope.2", "password", "uaa.resource", null);
         clientDetails.setClientSecret(SECRET);
         clientDetails.addAdditionalInformation(REQUIRED_USER_GROUPS, Arrays.asList("required.scope.1", "required.scope.2"));
         clientDetailsService.addClientDetails(clientDetails);
@@ -652,152 +639,6 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
     }
 
     @Test
-    void test_saml_bearer_grant() throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        //all our SAML defaults use :8080/uaa/ so we have to use that here too
-        String host = subdomain + ".localhost";
-        String fullPath = "/uaa/oauth/token/alias/" + subdomain + ".cloudfoundry-saml-login";
-        String origin = subdomain + ".cloudfoundry-saml-login";
-
-        MockMvcUtils.IdentityZoneCreationResult zone = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain,
-                mockMvc,
-                webApplicationContext,
-                null,
-                false, IdentityZoneHolder.getCurrentZoneId());
-
-        //create an actual IDP, so we can fetch metadata
-        String idpMetadata = MockMvcUtils.getIDPMetaData(mockMvc, subdomain);
-
-        //create an IDP in the default zone
-        SamlIdentityProviderDefinition idpDef = createLocalSamlIdpDefinition(origin, zone.getIdentityZone().getId(), idpMetadata);
-        IdentityProvider provider = new IdentityProvider();
-        provider.setConfig(idpDef);
-        provider.setActive(true);
-        provider.setIdentityZoneId(zone.getIdentityZone().getId());
-        provider.setName(origin);
-        provider.setOriginKey(origin);
-
-        IdentityZoneHolder.set(zone.getIdentityZone());
-        webApplicationContext.getBean(JdbcIdentityProviderProvisioning.class).create(provider, provider.getIdentityZoneId());
-        IdentityZoneHolder.clear();
-
-        String assertion = samlTestUtils.mockAssertionEncoded(subdomain + ".cloudfoundry-saml-login",
-                "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
-                "Saml2BearerIntegrationUser",
-                "http://" + subdomain + ".localhost:8080/uaa/oauth/token/alias/" + subdomain + ".cloudfoundry-saml-login",
-                subdomain + ".cloudfoundry-saml-login"
-        );
-
-        //create client in default zone
-        String clientId = "testclient" + generator.generate();
-        setUpClients(clientId, "uaa.none", "uaa.user,openid", GRANT_TYPE_SAML2_BEARER + ",password", true, TEST_REDIRECT_URI, null, 600, zone.getIdentityZone());
-
-
-        //String fullPath = "/uaa/oauth/token";
-        MockHttpServletRequestBuilder post = post(fullPath)
-                .with(request -> {
-                    request.setServerPort(8080);
-                    request.setRequestURI(fullPath);
-                    request.setServerName(host);
-                    return request;
-                })
-                .contextPath("/uaa")
-                .accept(APPLICATION_JSON)
-                .header(HOST, host)
-                .contentType(APPLICATION_FORM_URLENCODED)
-                .param("grant_type", TokenConstants.GRANT_TYPE_SAML2_BEARER)
-                .param("client_id", clientId)
-                .param("client_secret", "secret")
-                .param("assertion", assertion);
-
-
-        mockMvc.perform(post)
-                .andDo(print())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.access_token").exists())
-                .andExpect(jsonPath("$.scope").value("openid uaa.user"));
-
-        mockMvc.perform(post.param("scope", "uaa.admin"))
-                .andDo(print())
-                .andExpect(status().isBadRequest());
-
-    }
-
-    @Test
-    void test_two_zone_saml_bearer_grant() throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        //all our SAML defaults use :8080/uaa/ so we have to use that here too
-        String spInvocationEndpoint = "/uaa/oauth/token/alias/cloudfoundry-saml-login";
-        String idpOrigin = subdomain + ".cloudfoundry-saml-login";
-
-        //create an zone - that zone will be our IDP
-        MockMvcUtils.IdentityZoneCreationResult zone = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain,
-                mockMvc,
-                webApplicationContext,
-                null,
-                false, IdentityZoneHolder.getCurrentZoneId());
-        //create an actual IDP, so we can fetch metadata
-        String spMetadata = MockMvcUtils.getSPMetadata(mockMvc, null);
-        String idpMetadata = MockMvcUtils.getIDPMetaData(mockMvc, subdomain);
-
-        //create an IDP in the default zone
-        SamlIdentityProviderDefinition idpDef = createLocalSamlIdpDefinition(idpOrigin, IdentityZone.getUaaZoneId(), idpMetadata);
-        IdentityProvider provider = new IdentityProvider();
-        provider.setConfig(idpDef);
-        provider.setActive(true);
-        provider.setIdentityZoneId(IdentityZone.getUaaZoneId());
-        provider.setName(idpOrigin);
-        provider.setOriginKey(idpOrigin);
-
-        IdentityZoneHolder.clear();
-        webApplicationContext.getBean(JdbcIdentityProviderProvisioning.class).create(provider, provider.getIdentityZoneId());
-        IdentityZoneHolder.clear();
-
-        String assertion = samlTestUtils.mockAssertionEncoded(subdomain + ".cloudfoundry-saml-login",
-                "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
-                "Saml2BearerIntegrationUser",
-                "http://localhost:8080/uaa/oauth/token/alias/cloudfoundry-saml-login",
-                "cloudfoundry-saml-login"
-        );
-
-        //create client in default zone
-        String clientId = "testclient" + generator.generate();
-        setUpClients(clientId, "uaa.none", "uaa.user,openid", GRANT_TYPE_SAML2_BEARER + ",password", true, TEST_REDIRECT_URI, null, 600, null);
-
-
-        MockHttpServletRequestBuilder post = post(spInvocationEndpoint)
-                .with(request -> {
-                    request.setServerPort(8080);
-                    request.setRequestURI(spInvocationEndpoint);
-                    request.setServerName("localhost");
-                    return request;
-                })
-                .contextPath("/uaa")
-                .accept(APPLICATION_JSON)
-                .header(HOST, "localhost")
-                .contentType(APPLICATION_FORM_URLENCODED)
-                .param("grant_type", "urn:ietf:params:oauth:grant-type:saml2-bearer")
-                .param("client_id", clientId)
-                .param("client_secret", "secret")
-                .param("assertion", assertion);
-
-
-        String json = mockMvc.perform(post)
-                .andDo(print())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.access_token").exists())
-                .andExpect(jsonPath("$.scope").value("openid uaa.user"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        mockMvc.perform(post.param("scope", "uaa.admin"))
-                .andDo(print())
-                .andExpect(status().isBadRequest());
-
-    }
-
-    @Test
     void getOauthToken_Password_Grant_When_UAA_Provider_is_Disabled() throws Exception {
         String clientId = "testclient" + generator.generate();
         setUpClients(clientId, "uaa.user", "uaa.user", "password", true, TEST_REDIRECT_URI,
@@ -905,7 +746,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
 
     @Test
     void testRefreshTokenNotPresentWhenClientDoesNotHaveGrantType() throws Exception {
-        BaseClientDetails clientWithoutRefreshTokenGrant = setUpClients("testclient" + generator.generate(), "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, true);
+        UaaClientDetails clientWithoutRefreshTokenGrant = setUpClients("testclient" + generator.generate(), "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, true);
         String username = "testuser" + generator.generate();
         String userScopes = "uaa.user,other.scope,openid";
         ScimUser developer = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
@@ -938,7 +779,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
     @Test
     void refreshAccessToken_withClient_withAutoApproveField() throws Exception {
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
         clientDetails.setAutoApproveScopes(Collections.singletonList("uaa.user"));
         clientDetails.setClientSecret("secret");
         clientDetails.addAdditionalInformation(ClientConstants.AUTO_APPROVE, Collections.singletonList("other.scope"));
@@ -988,7 +829,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
     @Test
     void authorizeEndpointWithPromptNone_WhenNotAuthenticated() throws Exception {
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
         clientDetails.setAutoApproveScopes(Collections.singletonList("uaa.user"));
         clientDetails.setClientSecret("secret");
         clientDetails.addAdditionalInformation(ClientConstants.AUTO_APPROVE, Collections.singletonList("other.scope"));
@@ -1015,60 +856,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
     }
 
     @Test
-    void testAuthorizeEndpointWithPromptNone_MfaRequired() throws Exception {
-        String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
-        clientDetails.setAutoApproveScopes(Collections.singletonList("uaa.user"));
-        clientDetails.setClientSecret("secret");
-        clientDetails.addAdditionalInformation(ClientConstants.AUTO_APPROVE, Collections.singletonList("other.scope"));
-        clientDetails.addAdditionalInformation(ClientConstants.ALLOWED_PROVIDERS, Collections.singletonList("uaa"));
-        clientDetailsService.addClientDetails(clientDetails);
-
-        String username = "testuser" + generator.generate();
-        String userScopes = "uaa.user,other.scope";
-        ScimUser developer = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
-        super.setupForMfaPasswordGrant(developer.getId());
-
-        MockHttpSession session = getAuthenticatedSession(developer);
-
-        String state = generator.generate();
-
-        MvcResult result = mockMvc.perform(get("/oauth/authorize")
-                .session(session)
-                .param(OAuth2Utils.RESPONSE_TYPE, "code")
-                .param(OAuth2Utils.STATE, state)
-                .param(OAuth2Utils.CLIENT_ID, clientId)
-                .param(OAuth2Utils.REDIRECT_URI, TEST_REDIRECT_URI)
-                .param(ID_TOKEN_HINT_PROMPT, ID_TOKEN_HINT_PROMPT_NONE))
-                .andDo(print())
-                .andExpect(status().isFound())
-                .andReturn();
-
-        String url = result.getResponse().getHeader("Location");
-        assertTrue(url.startsWith(UaaUrlUtils.addQueryParameter(TEST_REDIRECT_URI, "error", "interaction_required")));
-
-        setAuthentication(session, developer, false, "mfa", "pwd", "otp");
-        result = mockMvc.perform(get("/oauth/authorize")
-                .session(session)
-                .param(OAuth2Utils.RESPONSE_TYPE, "code")
-                .param(OAuth2Utils.STATE, state)
-                .param(OAuth2Utils.CLIENT_ID, clientId)
-                .param(OAuth2Utils.REDIRECT_URI, TEST_REDIRECT_URI)
-                .param(ID_TOKEN_HINT_PROMPT, ID_TOKEN_HINT_PROMPT_NONE))
-                .andDo(print())
-                .andExpect(status().isFound())
-                .andReturn();
-        url = result.getResponse().getHeader("Location");
-        assertThat(url, containsString(TEST_REDIRECT_URI));
-        assertThat(url, not(containsString("error")));
-        assertThat(url, not(containsString("login_required")));
-        assertThat(url, not(containsString("interaction_required")));
-    }
-
-    @Test
     void testAuthorizeEndpointWithPromptNone_ForcePasswordChangeRequired() throws Exception {
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
         clientDetails.setAutoApproveScopes(Collections.singletonList("uaa.user"));
         clientDetails.setClientSecret("secret");
         clientDetails.addAdditionalInformation(ClientConstants.AUTO_APPROVE, Collections.singletonList("other.scope"));
@@ -1079,7 +869,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         String userScopes = "uaa.user,other.scope";
         ScimUser developer = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
         MockHttpSession session = new MockHttpSession();
-        setAuthentication(session, developer, true, "pwd", "mfa", "otp");
+        setAuthentication(session, developer, true, "pwd", "otp");
 
         String state = generator.generate();
 
@@ -1097,7 +887,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         String url = result.getResponse().getHeader("Location");
         assertTrue(url.startsWith(UaaUrlUtils.addQueryParameter(TEST_REDIRECT_URI, "error", "interaction_required")));
 
-        setAuthentication(session, developer, false, "mfa", "pwd", "otp");
+        setAuthentication(session, developer, false, "pwd", "otp");
         result = mockMvc.perform(get("/oauth/authorize")
                 .session(session)
                 .param(OAuth2Utils.RESPONSE_TYPE, "code")
@@ -1118,7 +908,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
     @Test
     void testAuthorizeEndpointWithPromptNone_Authenticated() throws Exception {
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
         clientDetails.setAutoApproveScopes(Collections.singletonList("uaa.user"));
         clientDetails.setClientSecret("secret");
         clientDetails.addAdditionalInformation(ClientConstants.AUTO_APPROVE, Collections.singletonList("other.scope"));
@@ -1751,7 +1541,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
 
         UriComponents locationComponents = UriComponentsBuilder.fromUri(URI.create(mvcResult.getResponse().getHeader("Location"))).build();
         MultiValueMap<String, String> queryParams = locationComponents.getQueryParams();
-        String errorMessage = URIUtil.encodeQuery("scim.write is invalid. Please use a valid scope name in the request");
+        String errorMessage = UriUtils.encodeQuery("scim.write is invalid. Please use a valid scope name in the request", Charset.defaultCharset());
         assertFalse(queryParams.containsKey("scope"));
         assertEquals(errorMessage, queryParams.getFirst("error_description"));
     }
@@ -1780,7 +1570,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
 
         UriComponents locationComponents = UriComponentsBuilder.fromUri(URI.create(mvcResult.getResponse().getHeader("Location"))).build();
         MultiValueMap<String, String> queryParams = locationComponents.getQueryParams();
-        String errorMessage = URIUtil.encodeQuery("[something.else] is invalid. This user is not allowed any of the requested scopes");
+        String errorMessage = UriUtils.encodeQuery("[something.else] is invalid. This user is not allowed any of the requested scopes", Charset.defaultCharset());
         assertFalse(queryParams.containsKey("scope"));
         assertEquals(errorMessage, queryParams.getFirst("error_description"));
     }
@@ -3530,7 +3320,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .param(OAuth2Utils.GRANT_TYPE, "password")
                 .param(OAuth2Utils.CLIENT_ID, clientId))
                 .andExpect(status().isUnauthorized())
-                .andExpect(content().string("{\"error\":\"unauthorized\",\"error_description\":\"Bad credentials\"}"));
+                .andExpect(content().string("{\"error\":\"invalid_client\",\"error_description\":\"Bad credentials\"}"));
     }
 
     @Test
@@ -3598,8 +3388,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .param(OAuth2Utils.CLIENT_ID, clientId))
                 .andExpect(status().isOk())
                 .andReturn();
-        String claimsJSON = JwtHelper.decode(JsonUtils.readValue(result.getResponse().getContentAsString(), OAuthToken.class).accessToken).getClaims();
-        Claims claims = JsonUtils.readValue(claimsJSON, Claims.class);
+        Claims claims = UaaTokenUtils.getClaimsFromTokenString(JsonUtils.readValue(result.getResponse().getContentAsString(), OAuthToken.class).accessToken);
         assertEquals(claims.getIss(), "http://" + subdomain.toLowerCase() + ".localhost:8080/uaa/oauth/token");
         assertThat(claims.getScope(), containsInAnyOrder("openid", "custom.default.group"));
     }
@@ -3620,8 +3409,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .param(OAuth2Utils.CLIENT_ID, clientId))
                 .andExpect(status().isOk())
                 .andReturn();
-        String claimsJSON = JwtHelper.decode(JsonUtils.readValue(result.getResponse().getContentAsString(), OAuthToken.class).accessToken).getClaims();
-        Claims claims = JsonUtils.readValue(claimsJSON, Claims.class);
+        Claims claims = UaaTokenUtils.getClaimsFromTokenString(JsonUtils.readValue(result.getResponse().getContentAsString(), OAuthToken.class).accessToken);
         assertEquals(claims.getIss(), "http://" + subdomain.toLowerCase() + ".localhost:8080/uaa/oauth/token");
     }
 
@@ -3956,7 +3744,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
 
         body = doRefreshGrant(refreshToken, clientId, SECRET, status().isOk()).getResponse().getContentAsString();
         CompositeToken tokenResponse = JsonUtils.readValue(body, CompositeToken.class);
-        Map<String, Object> claims = UaaTokenUtils.getClaims(tokenResponse.getValue());
+        Map<String, Object> claims = UaaTokenUtils.getClaims(tokenResponse.getValue(), Map.class);
 
         assertThat(claims.get(JTI).toString(), not(endsWith("-r")));
     }
@@ -4056,7 +3844,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
     @Test
     void authorizationCanRedirectToSubpathOfConfiguredRedirect() throws Exception {
         String clientId = "testclient" + generator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, "uaa.user,other.scope", "authorization_code,refresh_token", "uaa.resource", TEST_REDIRECT_URI);
         clientDetails.setAutoApproveScopes(Collections.singletonList("uaa.user"));
         clientDetails.setClientSecret("secret");
         clientDetails.addAdditionalInformation(ClientConstants.AUTO_APPROVE, Collections.singletonList("other.scope"));
@@ -4117,7 +3905,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         String redirectUri = "https://example.com/dashboard/?appGuid=app-guid&ace_config=test";
         String clientId = "authclient-" + generator.generate();
         String scopes = "openid";
-        BaseClientDetails client = setUpClients(clientId, scopes, scopes, GRANT_TYPES, true, redirectUri);
+        UaaClientDetails client = setUpClients(clientId, scopes, scopes, GRANT_TYPES, true, redirectUri);
         client.setRegisteredRedirectUri(redirectUris);
         webApplicationContext.getBean(MultitenantClientServices.class).updateClientDetails(client);
 
@@ -4148,7 +3936,13 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         assertEquals(tokenEndpointBuilder.getTokenEndpoint(IdentityZoneHolder.get()), iss);
         String sub = (String) result.get(ClaimConstants.SUB);
         assertEquals(userId, sub);
-        List<String> aud = (List<String>) result.get(ClaimConstants.AUD);
+        Object audObject = result.get(ClaimConstants.AUD);
+        List<String> aud = new ArrayList<>();
+        if (audObject instanceof Collection<?>) {
+            aud.addAll((List<String>) result.get(ClaimConstants.AUD));
+        } else if (audObject instanceof String audString) {
+            aud.add(audString);
+        }
         assertTrue(aud.contains(clientId));
         Integer exp = (Integer) result.get(ClaimConstants.EXPIRY_IN_SECONDS);
         assertNotNull(exp);

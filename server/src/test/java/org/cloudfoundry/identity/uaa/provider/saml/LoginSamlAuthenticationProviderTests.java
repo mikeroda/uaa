@@ -33,6 +33,7 @@ import org.cloudfoundry.identity.uaa.util.TimeService;
 import org.cloudfoundry.identity.uaa.util.TimeServiceImpl;
 import org.cloudfoundry.identity.uaa.web.UaaSavedRequestAwareAuthenticationSuccessHandler;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
+import org.cloudfoundry.identity.uaa.zone.JdbcIdentityZoneProvisioning;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManagerImpl;
 import org.joda.time.DateTime;
@@ -134,6 +135,7 @@ class LoginSamlAuthenticationProviderTests {
     private static final String SAML_ADMIN = "saml.admin";
     private static final String SAML_TEST = "saml.test";
     private static final String SAML_NOT_MAPPED = "saml.unmapped";
+    private static final String UAA_USER = "uaa.user";
     private static final String UAA_SAML_USER = "uaa.saml.user";
     private static final String UAA_SAML_ADMIN = "uaa.saml.admin";
     private static final String UAA_SAML_TEST = "uaa.saml.test";
@@ -178,11 +180,13 @@ class LoginSamlAuthenticationProviderTests {
 
         ScimGroupProvisioning groupProvisioning = new JdbcScimGroupProvisioning(
                 jdbcTemplate, new JdbcPagingListFactory(jdbcTemplate, limitSqlAdapter), dbUtils);
-        identityZoneManager.getCurrentIdentityZone().getConfig().getUserConfig().setDefaultGroups(Collections.singletonList("uaa.user"));
-        groupProvisioning.createOrGet(new ScimGroup(null, "uaa.user", identityZoneManager.getCurrentIdentityZone().getId()), identityZoneManager.getCurrentIdentityZone().getId());
+        identityZoneManager.getCurrentIdentityZone().getConfig().getUserConfig().setDefaultGroups(Collections.singletonList(UAA_USER));
+        identityZoneManager.getCurrentIdentityZone().getConfig().getUserConfig().setAllowedGroups(Arrays.asList(UAA_USER, SAML_USER,
+                                                    SAML_ADMIN,SAML_TEST,SAML_NOT_MAPPED, UAA_SAML_USER,UAA_SAML_ADMIN,UAA_SAML_TEST));
+        groupProvisioning.createOrGet(new ScimGroup(null, UAA_USER, identityZoneManager.getCurrentIdentityZone().getId()), identityZoneManager.getCurrentIdentityZone().getId());
         providerDefinition = new SamlIdentityProviderDefinition();
 
-        userProvisioning = new JdbcScimUserProvisioning(jdbcTemplate, new JdbcPagingListFactory(jdbcTemplate, limitSqlAdapter), passwordEncoder);
+        userProvisioning = new JdbcScimUserProvisioning(jdbcTemplate, new JdbcPagingListFactory(jdbcTemplate, limitSqlAdapter), passwordEncoder, new IdentityZoneManagerImpl(), new JdbcIdentityZoneProvisioning(jdbcTemplate));
 
 
         uaaSamlUser = groupProvisioning.create(new ScimGroup(null, UAA_SAML_USER, IdentityZone.getUaaZoneId()), identityZoneManager.getCurrentIdentityZone().getId());
@@ -242,7 +246,7 @@ class LoginSamlAuthenticationProviderTests {
 
     @Test
     void testAuthenticateSimple() {
-        authprovider.authenticate(mockSamlAuthentication());
+        assertNotNull(authprovider.authenticate(mockSamlAuthentication()));
     }
 
     @Test

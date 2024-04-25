@@ -1,5 +1,6 @@
 package org.cloudfoundry.identity.uaa.oauth;
 
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
 import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
@@ -24,8 +25,8 @@ import org.springframework.security.oauth2.common.exceptions.InvalidScopeExcepti
 import org.springframework.security.oauth2.common.exceptions.UnauthorizedClientException;
 import org.springframework.security.oauth2.common.util.OAuth2Utils;
 import org.springframework.security.oauth2.provider.AuthorizationRequest;
+import org.springframework.security.oauth2.provider.OAuth2Authentication;
 import org.springframework.security.oauth2.provider.OAuth2Request;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.StringUtils;
 
@@ -55,7 +56,7 @@ class UaaAuthorizationRequestManagerTests {
 
     private Map<String, String> parameters = new HashMap<String, String>();
 
-    private BaseClientDetails client = new BaseClientDetails();
+    private UaaClientDetails client = new UaaClientDetails();
 
     private UaaUser user = null;
 
@@ -134,14 +135,20 @@ class UaaAuthorizationRequestManagerTests {
 
     @Test
     void test_user_token_request() {
+        OAuth2Authentication oAuth2Authentication = mock(OAuth2Authentication.class);
+        OAuth2Request oAuth2Request = mock(OAuth2Request.class);
         when(mockSecurityContextAccessor.isUser()).thenReturn(true);
         when(mockSecurityContextAccessor.getAuthorities()).thenReturn((Collection)AuthorityUtils.commaSeparatedStringToAuthorityList("uaa.user,requested.scope"));
-        BaseClientDetails recipient = new BaseClientDetails("recipient", "requested", "requested.scope", "password", "");
+        when(oAuth2Authentication.getOAuth2Request()).thenReturn(oAuth2Request);
+        when(oAuth2Request.getExtensions()).thenReturn(Map.of("client_auth_method", "none"));
+        SecurityContextHolder.getContext().setAuthentication(oAuth2Authentication);
+        UaaClientDetails recipient = new UaaClientDetails("recipient", "requested", "requested.scope", "password", "");
         parameters.put("scope", "requested.scope");
         parameters.put("client_id", recipient.getClientId());
         parameters.put("expires_in", "44000");
         parameters.put(OAuth2Utils.GRANT_TYPE, TokenConstants.GRANT_TYPE_USER_TOKEN);
         IdentityZoneHolder.get().getConfig().getUserConfig().setDefaultGroups(Collections.singletonList("uaa.user"));
+        IdentityZoneHolder.get().getConfig().getUserConfig().setAllowedGroups(null); // all groups allowed
         client.setScope(StringUtils.commaDelimitedListToSet("aud1.test,aud2.test,uaa.user"));
         when(clientDetailsService.loadClientByClientId(recipient.getClientId(), "uaa")).thenReturn(recipient);
         ReflectionTestUtils.setField(factory, "uaaUserDatabase", null);
@@ -170,6 +177,17 @@ class UaaAuthorizationRequestManagerTests {
     }
 
     @Test
+    void testScopesIncludesAllowedAuthoritiesForUser() {
+        when(mockSecurityContextAccessor.isUser()).thenReturn(true);
+        when(mockSecurityContextAccessor.getAuthorities()).thenReturn((Collection)AuthorityUtils.commaSeparatedStringToAuthorityList("foo.bar,spam.baz,space.1.developer"));
+        IdentityZoneHolder.get().getConfig().getUserConfig().setAllowedGroups(Arrays.asList("openid","foo.bar"));
+        client.setScope(StringUtils.commaDelimitedListToSet("foo.bar,spam.baz,space.1.developer"));
+        AuthorizationRequest request = factory.createAuthorizationRequest(parameters);
+        assertEquals(StringUtils.commaDelimitedListToSet("foo.bar"), new TreeSet<String>(request.getScope()));
+        factory.validateParameters(request.getRequestParameters(), client);
+    }
+
+    @Test
     void testWildcardScopesIncludesAuthoritiesForUser() {
         when(mockSecurityContextAccessor.isUser()).thenReturn(true);
         when(mockSecurityContextAccessor.getAuthorities()).thenReturn((Collection)AuthorityUtils.commaSeparatedStringToAuthorityList("space.1.developer,space.2.developer,space.1.admin"));
@@ -180,9 +198,21 @@ class UaaAuthorizationRequestManagerTests {
     }
 
     @Test
+    void testWildcardScopesIncludesAllowedAuthoritiesForUser() {
+        when(mockSecurityContextAccessor.isUser()).thenReturn(true);
+        when(mockSecurityContextAccessor.getAuthorities()).thenReturn((Collection)AuthorityUtils.commaSeparatedStringToAuthorityList("space.1.developer,space.2.developer,space.1.admin"));
+        IdentityZoneHolder.get().getConfig().getUserConfig().setAllowedGroups(Arrays.asList("openid","space.1.developer"));
+        client.setScope(StringUtils.commaDelimitedListToSet("space.*.developer"));
+        AuthorizationRequest request = factory.createAuthorizationRequest(parameters);
+        assertEquals(StringUtils.commaDelimitedListToSet("space.1.developer"), new TreeSet<String>(request.getScope()));
+        factory.validateParameters(request.getRequestParameters(), client);
+    }
+
+    @Test
     void testOpenidScopeIncludeIsAResourceId() {
         parameters.put("scope", "openid foo.bar");
         IdentityZoneHolder.get().getConfig().getUserConfig().setDefaultGroups(Collections.singletonList("openid"));
+        IdentityZoneHolder.get().getConfig().getUserConfig().setAllowedGroups(Arrays.asList("openid","foo.bar"));
         client.setScope(StringUtils.commaDelimitedListToSet("openid,foo.bar"));
         AuthorizationRequest request = factory.createAuthorizationRequest(parameters);
         assertEquals(StringUtils.commaDelimitedListToSet("openid,foo.bar"), new TreeSet<String>(request.getScope()));
@@ -205,13 +235,13 @@ class UaaAuthorizationRequestManagerTests {
     @Test
     void testScopesValid() {
         parameters.put("scope","read");
-        factory.validateParameters(parameters, new BaseClientDetails("foo", null, "read,write", "implicit", null));
+        factory.validateParameters(parameters, new UaaClientDetails("foo", null, "read,write", "implicit", null));
     }
 
     @Test
     void testScopesValidWithWildcard() {
         parameters.put("scope","read write space.1.developer space.2.developer");
-        factory.validateParameters(parameters, new BaseClientDetails("foo", null, "read,write,space.*.developer", "implicit", null));
+        factory.validateParameters(parameters, new UaaClientDetails("foo", null, "read,write,space.*.developer", "implicit", null));
     }
 
     @Test
@@ -219,7 +249,7 @@ class UaaAuthorizationRequestManagerTests {
         parameters.put("scope","read write space.1.developer space.2.developer space.1.admin");
         assertThrowsWithMessageThat(InvalidScopeException.class,
                 () -> factory.validateParameters(parameters,
-                        new BaseClientDetails("foo", null, "read,write,space.*.developer", "implicit", null)),
+                        new UaaClientDetails("foo", null, "read,write,space.*.developer", "implicit", null)),
                 Matchers.containsString("space.1.admin is invalid. Please use a valid scope name in the request"));
     }
 
@@ -228,7 +258,7 @@ class UaaAuthorizationRequestManagerTests {
         parameters.put("scope", "admin");
         assertThrowsWithMessageThat(InvalidScopeException.class,
                 () -> factory.validateParameters(parameters,
-                        new BaseClientDetails("foo", null, "read,write", "implicit", null)),
+                        new UaaClientDetails("foo", null, "read,write", "implicit", null)),
                 Matchers.containsString("admin is invalid. Please use a valid scope name in the request"));
     }
 

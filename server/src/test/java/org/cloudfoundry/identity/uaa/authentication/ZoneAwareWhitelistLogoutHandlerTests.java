@@ -14,6 +14,7 @@
 
 package org.cloudfoundry.identity.uaa.authentication;
 
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.oauth.KeyInfoService;
 import org.cloudfoundry.identity.uaa.provider.oauth.ExternalOAuthLogoutHandler;
 import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
@@ -25,8 +26,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.oauth2.provider.NoSuchClientException;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
+import org.cloudfoundry.identity.uaa.provider.NoSuchClientException;
 
 import javax.servlet.ServletException;
 import java.io.IOException;
@@ -44,7 +44,7 @@ public class ZoneAwareWhitelistLogoutHandlerTests {
 
     private MockHttpServletRequest request = new MockHttpServletRequest();
     private MockHttpServletResponse response = new MockHttpServletResponse();
-    private BaseClientDetails client = new BaseClientDetails(CLIENT_ID, "", "", "", "", "http://*.testing.com,http://testing.com");
+    private UaaClientDetails client = new UaaClientDetails(CLIENT_ID, "", "", "", "", "http://*.testing.com,http://testing.com");
     private MultitenantClientServices clientDetailsService =  mock(MultitenantClientServices.class);
     private ExternalOAuthLogoutHandler oAuthLogoutHandler = mock(ExternalOAuthLogoutHandler.class);
     private KeyInfoService keyInfoService = mock(KeyInfoService.class);
@@ -163,10 +163,27 @@ public class ZoneAwareWhitelistLogoutHandlerTests {
     }
 
     @Test
-    public void test_exteral_logout() throws ServletException, IOException {
+    public void test_external_logout() throws ServletException, IOException {
         when(oAuthLogoutHandler.getLogoutUrl(null)).thenReturn("");
+        when(oAuthLogoutHandler.getPerformRpInitiatedLogout(null)).thenReturn(true);
         handler.onLogoutSuccess(request, response, null);
         verify(oAuthLogoutHandler, times(1)).onLogoutSuccess(request, response, null);
+    }
+
+    @Test
+    public void test_does_not_external_logout() throws ServletException, IOException {
+        when(oAuthLogoutHandler.getLogoutUrl(null)).thenReturn("");
+        when(oAuthLogoutHandler.getPerformRpInitiatedLogout(null)).thenReturn(false);
+        handler.onLogoutSuccess(request, response, null);
+        verify(oAuthLogoutHandler, times(0)).onLogoutSuccess(request, response, null);
+    }
+
+    @Test
+    public void test_does_not_external_logout_when_logout_url_is_null() throws ServletException, IOException {
+        when(oAuthLogoutHandler.getLogoutUrl(null)).thenReturn(null);
+        when(oAuthLogoutHandler.getPerformRpInitiatedLogout(null)).thenReturn(true);
+        handler.onLogoutSuccess(request, response, null);
+        verify(oAuthLogoutHandler, times(0)).onLogoutSuccess(request, response, null);
     }
 
     @Test

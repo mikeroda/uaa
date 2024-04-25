@@ -18,6 +18,7 @@ import org.cloudfoundry.identity.uaa.ServerRunning;
 import org.cloudfoundry.identity.uaa.codestore.ExpiringCode;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.extensions.PollutionPreventionExtension;
+import org.cloudfoundry.identity.uaa.integration.endpoints.SamlLogoutAuthSourceEndpoint;
 import org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils;
 import org.cloudfoundry.identity.uaa.integration.util.ScreenshotOnFail;
 import org.cloudfoundry.identity.uaa.invitations.InvitationsRequest;
@@ -33,7 +34,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.runner.RunWith;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -42,7 +43,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.client.test.TestAccounts;
 import org.springframework.security.oauth2.common.util.RandomValueStringGenerator;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.web.client.DefaultResponseErrorHandler;
@@ -54,6 +55,7 @@ import java.sql.Timestamp;
 import java.util.concurrent.TimeUnit;
 
 
+import static org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils.SAML_AUTH_SOURCE;
 import static org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils.SIMPLESAMLPHP_LOGIN_PROMPT_XPATH_EXPR;
 import static org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils.getZoneAdminToken;
 import static org.hamcrest.Matchers.containsString;
@@ -140,7 +142,7 @@ public class InvitationsIT {
             webDriver.get(baseUrl + "/logout.do");
         }
         webDriver.get(appUrl + "/j_spring_security_logout");
-        webDriver.get(IntegrationTestUtils.SIMPLESAMLPHP_UAA_ACCEPTANCE + "/module.php/core/authenticate.php?as=example-userpass&logout");
+        SamlLogoutAuthSourceEndpoint.logoutAuthSource_goesToSamlWelcomePage(webDriver, IntegrationTestUtils.SIMPLESAMLPHP_UAA_ACCEPTANCE, SAML_AUTH_SOURCE);
         webDriver.manage().deleteAllCookies();
 
         webDriver.get("http://localhost:8080/app/");
@@ -219,7 +221,7 @@ public class InvitationsIT {
     public void acceptInvitation_for_samlUser() throws Exception {
         webDriver.get(baseUrl + "/logout.do");
 
-        BaseClientDetails appClient = IntegrationTestUtils.getClient(scimToken, baseUrl, "app");
+        UaaClientDetails appClient = IntegrationTestUtils.getClient(scimToken, baseUrl, "app");
         appClient.setScope(Lists.newArrayList("cloud_controller.read", "password.write", "scim.userids", "cloud_controller.write", "openid", "organizations.acme"));
         appClient.setAutoApproveScopes(Lists.newArrayList("openid"));
         IntegrationTestUtils.updateClient(baseUrl, scimToken, appClient);
@@ -234,9 +236,7 @@ public class InvitationsIT {
         webDriver.findElement(By.name("username")).clear();
         webDriver.findElement(By.name("username")).sendKeys("user_only_for_invitations_test");
         webDriver.findElement(By.name("password")).sendKeys("saml");
-        WebElement loginButton = webDriver.findElement(By.xpath("//input[@value='Login']"));
-
-        loginButton.click();
+        webDriver.findElement(By.id("submit_button")).click();
 
         //wait until UAA page has loaded
         webDriver.findElement(By.id("application_authorization"));
@@ -268,7 +268,7 @@ public class InvitationsIT {
     @Test
     public void invitedOIDCUserVerified() throws Exception {
         String clientId = "invite-client" + new RandomValueStringGenerator().generate();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, null, "client_credentials", "scim.invite");
+        UaaClientDetails clientDetails = new UaaClientDetails(clientId, null, null, "client_credentials", "scim.invite");
         clientDetails.setClientSecret("invite-client-secret");
         testClient.createClient(scimToken, clientDetails);
         String inviteToken = testClient.getOAuthAccessToken(clientId, "invite-client-secret", "client_credentials", "scim.invite");

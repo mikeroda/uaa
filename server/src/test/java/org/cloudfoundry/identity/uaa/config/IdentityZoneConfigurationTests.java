@@ -23,7 +23,6 @@ import org.cloudfoundry.identity.uaa.zone.CorsPolicy;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneConfiguration;
 import org.cloudfoundry.identity.uaa.zone.Links;
-import org.cloudfoundry.identity.uaa.zone.MfaConfig;
 import org.cloudfoundry.identity.uaa.zone.SamlConfig;
 import org.cloudfoundry.identity.uaa.zone.TokenPolicy;
 import org.cloudfoundry.identity.uaa.zone.UserConfig;
@@ -40,6 +39,7 @@ import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.springframework.http.HttpHeaders.ACCEPT;
@@ -74,6 +74,7 @@ public class IdentityZoneConfigurationTests {
             "user_attributes",
             "uaa.offline_token"
         ));
+        assertNull(definition.getUserConfig().resultingAllowedGroups());
         s = JsonUtils.writeValueAsString(definition);
         assertThat(s, containsString("userConfig"));
         assertThat(s, containsString("uaa.offline_token"));
@@ -101,12 +102,6 @@ public class IdentityZoneConfigurationTests {
     public void deserializeClientSecretPolicyJSON_withUnknownProperties_doesNotFail() {
         String config = "{ \"unknown-property\": \"unknown-value\"}";
         JsonUtils.readValue(config, ClientSecretPolicy.class);
-    }
-
-    @Test
-    public void deserializeMfaConfigJSON_withUnknownProperties_doesNotFail() {
-        String config = "{ \"unknown-property\": \"unknown-value\"}";
-        JsonUtils.readValue(config, MfaConfig.class);
     }
 
     @Test

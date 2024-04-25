@@ -32,7 +32,7 @@ import org.springframework.security.oauth2.client.test.OAuth2ContextConfiguratio
 import org.springframework.security.oauth2.client.test.OAuth2ContextSetup;
 import org.springframework.security.oauth2.client.token.grant.client.ClientCredentialsResourceDetails;
 import org.springframework.security.oauth2.common.util.RandomValueStringGenerator;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Collections;
@@ -145,6 +145,43 @@ public class IdentityZoneEndpointsIntegrationTests {
     }
 
     @Test
+    public void testUpdateZoneAllowedGroups() {
+        IdentityZone idZone = new IdentityZone();
+        String id = UUID.randomUUID().toString();
+        idZone.setId(id);
+        idZone.setSubdomain(id);
+        idZone.setName("testUpdateZone-"+id);
+        ResponseEntity<String> response = client.exchange(
+                serverRunning.getUrl("/identity-zones"),
+                HttpMethod.POST,
+                new HttpEntity<>(idZone),
+                new ParameterizedTypeReference<String>() {},
+                id);
+        assertEquals(response.getBody(), HttpStatus.CREATED, response.getStatusCode());
+
+        List<String> existingGroups = List.of("sps.write", "sps.read", "idps.write", "idps.read", "clients.admin", "clients.write", "clients.read",
+            "clients.secret", "scim.write", "scim.read", "scim.create", "scim.userids", "scim.zones", "groups.update", "password.write", "oauth.login", "uaa.admin");
+        idZone.getConfig().getUserConfig().setAllowedGroups(existingGroups);
+        response = client.exchange(
+                serverRunning.getUrl("/identity-zones/"+id),
+                HttpMethod.PUT,
+                new HttpEntity<>(idZone),
+                new ParameterizedTypeReference<String>() {},
+                id);
+        assertEquals(response.getBody() , HttpStatus.OK, response.getStatusCode());
+
+        List<String> notAllExistingGroups = List.of("clients.admin", "clients.write", "clients.read", "clients.secret");
+        idZone.getConfig().getUserConfig().setAllowedGroups(notAllExistingGroups);
+        response = client.exchange(
+            serverRunning.getUrl("/identity-zones/"+id),
+            HttpMethod.PUT,
+            new HttpEntity<>(idZone),
+            new ParameterizedTypeReference<String>() {},
+            id);
+        assertEquals(response.getBody() , HttpStatus.UNPROCESSABLE_ENTITY, response.getStatusCode());
+    }
+
+    @Test
     public void testCreateZoneWithClient() {
         IdentityZone idZone = new IdentityZone();
         String id = UUID.randomUUID().toString();
@@ -159,7 +196,7 @@ public class IdentityZoneEndpointsIntegrationTests {
                 id);
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
 
-        BaseClientDetails clientDetails = new BaseClientDetails("test123", null,"openid", GRANT_TYPE_AUTHORIZATION_CODE, "uaa.resource");
+        UaaClientDetails clientDetails = new UaaClientDetails("test123", null,"openid", GRANT_TYPE_AUTHORIZATION_CODE, "uaa.resource");
         clientDetails.setClientSecret("testSecret");
         clientDetails.addAdditionalInformation(ClientConstants.ALLOWED_PROVIDERS, Collections.singleton(OriginKeys.UAA));
 

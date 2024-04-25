@@ -15,26 +15,21 @@
 package org.cloudfoundry.identity.uaa.mock.util;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.warrenstrange.googleauth.GoogleAuthenticator;
-import com.warrenstrange.googleauth.GoogleAuthenticatorConfig;
 import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.lang.RandomStringUtils;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.cloudfoundry.identity.uaa.audit.event.AbstractUaaEvent;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthenticationDetails;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils;
 import org.cloudfoundry.identity.uaa.invitations.InvitationsRequest;
 import org.cloudfoundry.identity.uaa.invitations.InvitationsResponse;
 import org.cloudfoundry.identity.uaa.login.Prompt;
-import org.cloudfoundry.identity.uaa.mfa.GoogleMfaProviderConfig;
-import org.cloudfoundry.identity.uaa.mfa.MfaProvider;
-import org.cloudfoundry.identity.uaa.mfa.MfaProviderProvisioning;
-import org.cloudfoundry.identity.uaa.mfa.UserGoogleMfaCredentials;
-import org.cloudfoundry.identity.uaa.mfa.exception.MfaAlreadyExistsException;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientDetailsModification;
 import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
+import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.TokenFormat;
 import org.cloudfoundry.identity.uaa.provider.AbstractIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
 import org.cloudfoundry.identity.uaa.provider.IdentityProviderProvisioning;
@@ -50,10 +45,10 @@ import org.cloudfoundry.identity.uaa.scim.ScimUserProvisioning;
 import org.cloudfoundry.identity.uaa.scim.endpoints.ScimGroupEndpoints;
 import org.cloudfoundry.identity.uaa.scim.jdbc.JdbcScimUserProvisioning;
 import org.cloudfoundry.identity.uaa.security.web.CookieBasedCsrfTokenRepository;
-import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.test.TestApplicationEventListener;
 import org.cloudfoundry.identity.uaa.user.UaaAuthority;
 import org.cloudfoundry.identity.uaa.user.UaaUserDatabase;
+import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
 import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
@@ -88,7 +83,6 @@ import org.springframework.security.core.context.SecurityContextImpl;
 import org.springframework.security.oauth2.common.util.OAuth2Utils;
 import org.springframework.security.oauth2.common.util.RandomValueStringGenerator;
 import org.springframework.security.oauth2.provider.ClientDetails;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
 import org.springframework.security.web.PortResolverImpl;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
@@ -97,7 +91,6 @@ import org.springframework.security.web.savedrequest.DefaultSavedRequest;
 import org.springframework.security.web.savedrequest.SavedRequest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -122,15 +115,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.CookieCsrfPostProcessor.cookieCsrf;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_AUTHORIZATION_CODE;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.TokenFormat.OPAQUE;
 import static org.cloudfoundry.identity.uaa.scim.ScimGroupMember.Type.USER;
-import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 import static org.springframework.http.HttpHeaders.HOST;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
@@ -139,9 +128,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 import static org.springframework.util.StringUtils.hasText;
 import static org.springframework.util.StringUtils.isEmpty;
 
@@ -193,111 +180,9 @@ public final class MockMvcUtils {
         return null;
     }
 
-    public static String performMfaPostVerifyWithCode(int code, MockMvc mvc, MockHttpSession session) throws Exception {
-        return performMfaPostVerifyWithCode(code, mvc, session, "localhost");
-    }
-
-    public static String performMfaPostVerifyWithCode(int code, MockMvc mvc, MockHttpSession session, String host) throws Exception {
-        return mvc.perform(post("/login/mfa/verify.do")
-          .param("code", Integer.toString(code))
-          .header("Host", host)
-          .session(session)
-          .with(cookieCsrf()))
-          .andExpect(status().is3xxRedirection())
-          .andExpect(redirectedUrl("/login/mfa/completed"))
-          .andReturn().getResponse().getRedirectedUrl();
-    }
-
-    public static int getMFACodeFromSession(MockHttpSession session) {
-        UserGoogleMfaCredentials activeCreds = (UserGoogleMfaCredentials) session.getAttribute("uaaMfaCredentials");
-        return getMfaCodeFromCredentials(activeCreds);
-    }
-
-    public static int getMfaCodeFromCredentials(UserGoogleMfaCredentials activeCreds) {
-        GoogleAuthenticator authenticator = new GoogleAuthenticator(new GoogleAuthenticatorConfig.GoogleAuthenticatorConfigBuilder().build());
-        return authenticator.getTotpPassword(activeCreds.getSecretKey());
-    }
-
     public static UaaAuthentication getUaaAuthentication(HttpSession session) {
         SecurityContext context = (SecurityContext) session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
         return (UaaAuthentication) context.getAuthentication();
-    }
-
-    public static ResultActions performMfaRegistrationInZone(String username, String password, MockMvc mockMvc, String host, String[] firstAuthMethods, String[] afterMfaAuthMethods) throws Exception {
-
-        //ldap login
-        MockHttpSession session = (MockHttpSession) mockMvc.perform(
-          post("/login.do")
-            .with(cookieCsrf())
-            .header(HOST, host)
-            .accept(MediaType.TEXT_HTML)
-            .param("username", username)
-            .param("password", password)
-        )
-          .andExpect(status().isFound())
-          .andExpect(redirectedUrl("/"))
-          .andReturn().getRequest().getSession(false);
-
-        assertTrue(getUaaAuthentication(session).isAuthenticated());
-        assertThat(getUaaAuthentication(session).getAuthenticationMethods(), containsInAnyOrder(firstAuthMethods));
-
-        //successful login, follow redirect
-        mockMvc.perform(
-          get("/")
-            .header(HOST, host)
-            .accept(MediaType.TEXT_HTML)
-            .session(session)
-        )
-          .andExpect(status().isFound())
-          .andExpect(redirectedUrl("/login/mfa/register"));
-
-        //follow redirect to mfa register
-        mockMvc.perform(
-          get("/login/mfa/register")
-            .header(HOST, host)
-            .accept(MediaType.TEXT_HTML)
-            .session(session)
-        )
-          .andExpect(status().isOk())
-          .andExpect(view().name("mfa/qr_code"));
-
-        //post MFA code
-        int code = MockMvcUtils.getMFACodeFromSession(session);
-        String location = MockMvcUtils.performMfaPostVerifyWithCode(code, mockMvc, session, host);
-        //follow redirect to completed
-        location = mockMvc.perform(get(location)
-          .session(session)
-          .header(HOST, host)
-        )
-          .andExpect(status().isFound())
-          .andExpect(redirectedUrl("http://" + host + "/"))
-          .andReturn().getResponse().getRedirectedUrl();
-
-        ResultActions resultActions = mockMvc.perform(get(location)
-          .session(session)
-          .header(HOST, host)
-        );
-
-        assertTrue(getUaaAuthentication(session).isAuthenticated());
-        assertThat(getUaaAuthentication(session).getAuthenticationMethods(), containsInAnyOrder(afterMfaAuthMethods));
-
-        return resultActions;
-    }
-
-    public static MfaProvider createMfaProvider(ApplicationContext context, IdentityZone zone) {
-        String zoneId = zone.getId();
-        MfaProvider provider = new MfaProvider();
-        provider.setName(new AlphanumericRandomValueStringGenerator(5).generate().toLowerCase());
-        provider.setType(MfaProvider.MfaProviderType.GOOGLE_AUTHENTICATOR);
-        provider.setIdentityZoneId(zoneId);
-        provider.setConfig(new GoogleMfaProviderConfig());
-        provider.getConfig().setIssuer(zone.getName());
-        MfaProviderProvisioning provisioning = context.getBean(MfaProviderProvisioning.class);
-        try {
-            return provisioning.create(provider, zoneId);
-        } catch (MfaAlreadyExistsException x) {
-            return provisioning.update(provider, zoneId);
-        }
     }
 
     public static File getLimitedModeStatusFile(ApplicationContext context) {
@@ -559,7 +444,7 @@ public final class MockMvcUtils {
         IdentityZoneCreationResult zone = MockMvcUtils.createOtherIdentityZoneAndReturnResult(generator.generate().toLowerCase(), mockMvc, context, null, zoneId);
 
         List<String> redirectUris = Arrays.asList(redirectUri, "http://" + zone.getIdentityZone().getSubdomain() + ".localhost");
-        BaseClientDetails appClient = new BaseClientDetails("app", "", "scim.invite", "client_credentials,password,authorization_code", "uaa.admin,clients.admin,scim.write,scim.read,scim.invite", String.join(",", redirectUris));
+        UaaClientDetails appClient = new UaaClientDetails("app", "", "scim.invite", "client_credentials,password,authorization_code", "uaa.admin,clients.admin,scim.write,scim.read,scim.invite", String.join(",", redirectUris));
 
         appClient.setClientSecret("secret");
         appClient = MockMvcUtils.createClient(mockMvc, zone.getZoneAdminToken(), appClient, zone.getIdentityZone(),
@@ -738,7 +623,7 @@ public final class MockMvcUtils {
     public static IdentityZoneCreationResult createOtherIdentityZoneAndReturnResult(String subdomain,
                                                                                     MockMvc mockMvc,
                                                                                     ApplicationContext webApplicationContext,
-                                                                                    ClientDetails bootstrapClient,
+        ClientDetails bootstrapClient,
                                                                                     String zoneId) throws Exception {
 
         return createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, bootstrapClient, true, zoneId);
@@ -747,14 +632,14 @@ public final class MockMvcUtils {
     public static IdentityZone createOtherIdentityZone(String subdomain,
                                                        MockMvc mockMvc,
                                                        ApplicationContext webApplicationContext,
-                                                       ClientDetails bootstrapClient, String zoneId) throws Exception {
+        ClientDetails bootstrapClient, String zoneId) throws Exception {
         return createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, bootstrapClient, true, zoneId);
     }
 
     public static IdentityZone createOtherIdentityZone(String subdomain,
                                                        MockMvc mockMvc,
                                                        ApplicationContext webApplicationContext,
-                                                       ClientDetails bootstrapClient,
+        ClientDetails bootstrapClient,
                                                        boolean useWebRequests,
                                                        String zoneId) throws Exception {
         return createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, bootstrapClient, useWebRequests, zoneId).getIdentityZone();
@@ -772,7 +657,7 @@ public final class MockMvcUtils {
                                                        boolean useWebRequests,
                                                        String zoneId) throws Exception {
 
-        BaseClientDetails client = new BaseClientDetails("admin", null, null, "client_credentials",
+        UaaClientDetails client = new UaaClientDetails("admin", null, null, "client_credentials",
           "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
         client.setClientSecret("admin-secret");
 
@@ -973,8 +858,12 @@ public final class MockMvcUtils {
           ScimGroup.class);
     }
 
-    public static BaseClientDetails createClient(MockMvc mockMvc, String accessToken, BaseClientDetails clientDetails) throws Exception {
+    public static UaaClientDetails createClient(MockMvc mockMvc, String accessToken, UaaClientDetails clientDetails) throws Exception {
         return createClient(mockMvc, accessToken, clientDetails, IdentityZone.getUaa(), status().isCreated());
+    }
+
+    public static UaaClientDetails createClient(MockMvc mockMvc, IdentityZone identityZone, String accessToken, UaaClientDetails clientDetails) throws Exception {
+        return createClient(mockMvc, accessToken, clientDetails, identityZone, status().isCreated());
     }
 
     public static void deleteClient(MockMvc mockMvc, String accessToken, String clientId, String zoneSubdomain) throws Exception {
@@ -988,7 +877,7 @@ public final class MockMvcUtils {
           .andExpect(status().is(not(500)));
     }
 
-    public static BaseClientDetails createClient(MockMvc mockMvc, String accessToken, BaseClientDetails clientDetails,
+    public static UaaClientDetails createClient(MockMvc mockMvc, String accessToken, UaaClientDetails clientDetails,
                                                  IdentityZone zone, ResultMatcher status)
       throws Exception {
         MockHttpServletRequestBuilder createClientPost = post("/oauth/clients")
@@ -1002,14 +891,18 @@ public final class MockMvcUtils {
         return JsonUtils.readValue(
           mockMvc.perform(createClientPost)
             .andExpect(status)
-            .andReturn().getResponse().getContentAsString(), BaseClientDetails.class);
+            .andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
     }
 
-    public static BaseClientDetails createClient(ApplicationContext context, BaseClientDetails clientDetails, IdentityZone zone) {
+    public static UaaClientDetails createClient(ApplicationContext context, UaaClientDetails clientDetails, IdentityZone zone) {
 
         MultitenantJdbcClientDetailsService service = context.getBean(MultitenantJdbcClientDetailsService.class);
+        if (clientDetails.getClientSecret() == null) {
+            // provide for tests the empty secret behavior
+            clientDetails.setClientSecret("");
+        }
         service.addClientDetails(clientDetails, zone.getId());
-        return (BaseClientDetails) service.loadClientByClientId(clientDetails.getClientId(), zone.getId());
+        return (UaaClientDetails) service.loadClientByClientId(clientDetails.getClientId(), zone.getId());
     }
 
     public static ClientDetails createClient(MockMvc mockMvc, String adminAccessToken, String id, String secret, Collection<String> resourceIds, List<String> scopes, List<String> grantTypes, String authorities) throws Exception {
@@ -1041,13 +934,13 @@ public final class MockMvcUtils {
         return detailsModification;
     }
 
-    public static BaseClientDetails updateClient(ApplicationContext context, BaseClientDetails clientDetails, IdentityZone zone) {
+    public static UaaClientDetails updateClient(ApplicationContext context, UaaClientDetails clientDetails, IdentityZone zone) {
         MultitenantJdbcClientDetailsService service = context.getBean(MultitenantJdbcClientDetailsService.class);
         service.updateClientDetails(clientDetails, zone.getId());
-        return (BaseClientDetails) service.loadClientByClientId(clientDetails.getClientId(), zone.getId());
+        return (UaaClientDetails) service.loadClientByClientId(clientDetails.getClientId(), zone.getId());
     }
 
-    public static BaseClientDetails updateClient(MockMvc mockMvc, String accessToken, BaseClientDetails clientDetails, IdentityZone zone)
+    public static UaaClientDetails updateClient(MockMvc mockMvc, String accessToken, UaaClientDetails clientDetails, IdentityZone zone)
       throws Exception {
         MockHttpServletRequestBuilder updateClientPut =
           put("/oauth/clients/" + clientDetails.getClientId())
@@ -1062,10 +955,10 @@ public final class MockMvcUtils {
         return JsonUtils.readValue(
           mockMvc.perform(updateClientPut)
             .andExpect(status().isOk())
-            .andReturn().getResponse().getContentAsString(), BaseClientDetails.class);
+            .andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
     }
 
-    public static BaseClientDetails getClient(MockMvc mockMvc, String accessToken, String clientId, IdentityZone zone)
+    public static UaaClientDetails getClient(MockMvc mockMvc, String accessToken, String clientId, IdentityZone zone)
       throws Exception {
         MockHttpServletRequestBuilder readClientGet =
           get("/oauth/clients/" + clientId)
@@ -1079,7 +972,7 @@ public final class MockMvcUtils {
         return JsonUtils.readValue(
           mockMvc.perform(readClientGet)
             .andExpect(status().isOk())
-            .andReturn().getResponse().getContentAsString(), BaseClientDetails.class);
+            .andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
     }
 
     public static String getZoneAdminToken(MockMvc mockMvc, String adminToken, String zoneId) throws Exception {
@@ -1183,6 +1076,10 @@ public final class MockMvcUtils {
     }
 
     public static String getUserOAuthAccessTokenAuthCode(MockMvc mockMvc, String clientId, String clientSecret, String userId, String username, String password, String scope, String zoneId) throws Exception {
+        return getUserOAuthAccessTokenAuthCode(mockMvc, clientId, clientSecret, userId, username, password, scope, zoneId, OPAQUE);
+    }
+
+    public static String getUserOAuthAccessTokenAuthCode(MockMvc mockMvc, String clientId, String clientSecret, String userId, String username, String password, String scope, String zoneId, TokenFormat tokenFormat) throws Exception {
         String basicDigestHeaderValue = "Basic "
           + new String(org.apache.commons.codec.binary.Base64.encodeBase64((clientId + ":" + clientSecret)
           .getBytes()));
@@ -1204,7 +1101,7 @@ public final class MockMvcUtils {
           .session(session)
           .param(OAuth2Utils.GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE)
           .param(OAuth2Utils.RESPONSE_TYPE, "code")
-          .param(TokenConstants.REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
+          .param(TokenConstants.REQUEST_TOKEN_FORMAT, tokenFormat.getStringValue())
           .param(OAuth2Utils.STATE, state)
           .param(OAuth2Utils.CLIENT_ID, clientId)
           .param(OAuth2Utils.REDIRECT_URI, "http://localhost/test");
@@ -1445,18 +1342,6 @@ public final class MockMvcUtils {
         public String generate() {
             return "test" + counter.incrementAndGet();
         }
-    }
-
-    public static MfaProvider<GoogleMfaProviderConfig> constructGoogleMfaProvider() {
-        MfaProvider<GoogleMfaProviderConfig> res = new MfaProvider();
-        res.setName(new AlphanumericRandomValueStringGenerator(5).generate());
-        res.setType(MfaProvider.MfaProviderType.GOOGLE_AUTHENTICATOR);
-        res.setConfig(constructGoogleProviderConfiguration());
-        return res;
-    }
-
-    public static GoogleMfaProviderConfig constructGoogleProviderConfiguration() {
-        return new GoogleMfaProviderConfig();
     }
 
     public static IdentityZone updateZone(MockMvc mockMvc, IdentityZone updatedZone) throws Exception {

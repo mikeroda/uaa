@@ -1,8 +1,10 @@
 package org.cloudfoundry.identity.uaa.cypto;
 
-import org.bouncycastle.crypto.digests.SHA256Digest;
-import org.bouncycastle.crypto.generators.PKCS5S2ParametersGenerator;
-import org.bouncycastle.crypto.params.KeyParameter;
+import org.bouncycastle.crypto.PasswordBasedDeriver;
+import org.bouncycastle.crypto.PasswordConverter;
+import org.bouncycastle.crypto.fips.FipsPBKD;
+import org.bouncycastle.crypto.fips.FipsSHS;
+import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
 import org.bouncycastle.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,9 +14,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.ByteArrayInputStream;
-import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.Optional;
 
 public class EncryptionService {
     private Logger logger = LoggerFactory.getLogger(EncryptionService.class);
@@ -30,7 +31,11 @@ public class EncryptionService {
     private SecureRandom random = new SecureRandom();
 
 
-    public EncryptionService(String passphrase) {
+    public EncryptionService(EncryptionKeyService passphrase) {
+        this.passphrase = Optional.ofNullable(passphrase.getActiveKey()).map(EncryptionKeyService.EncryptionKey::getPassphrase).orElse(null);
+    }
+
+    protected EncryptionService(String passphrase) {
         this.passphrase = passphrase;
     }
 
@@ -40,7 +45,7 @@ public class EncryptionService {
 
             SecretKey key = new SecretKeySpec(generateKey(newSalt), CIPHER);
 
-            Cipher myCipher = Cipher.getInstance(CIPHERSCHEME);
+            Cipher myCipher = Cipher.getInstance(CIPHERSCHEME, BouncyCastleFipsProvider.PROVIDER_NAME);
             byte[] newNonce = generateRandomArray(GCM_IV_NONCE_SIZE_BYTES);
 
             GCMParameterSpec spec = new GCMParameterSpec(GCM_AUTHENTICATION_TAG_SIZE_BITS, newNonce);
@@ -84,9 +89,12 @@ public class EncryptionService {
     }
 
     private byte[] generateKey(byte[] salt) {
-        PKCS5S2ParametersGenerator gen = new PKCS5S2ParametersGenerator(new SHA256Digest());
-
-        gen.init(this.passphrase.getBytes(StandardCharsets.UTF_8), salt, PBKDF2_ITERATIONS);
-        return ((KeyParameter) gen.generateDerivedParameters(AES_KEY_LENGTH_BITS)).getKey();
+        PasswordBasedDeriver<FipsPBKD.Parameters> gen = new FipsPBKD.DeriverFactory().createDeriver(
+            FipsPBKD.PBKDF2.using(FipsSHS.Algorithm.SHA256_HMAC,
+                    PasswordConverter.UTF8.convert(this.passphrase.toCharArray()))
+                .withIterationCount(PBKDF2_ITERATIONS)
+                .withSalt(salt)
+        );
+        return gen.deriveKey(PasswordBasedDeriver.KeyType.CIPHER, (AES_KEY_LENGTH_BITS + 7) / 8);
     }
 }

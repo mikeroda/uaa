@@ -12,6 +12,7 @@
  *******************************************************************************/
 package org.cloudfoundry.identity.uaa.test;
 
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
@@ -29,8 +30,6 @@ import org.springframework.security.oauth2.client.token.grant.implicit.ImplicitR
 import org.springframework.security.oauth2.client.token.grant.password.ResourceOwnerPasswordResourceDetails;
 import org.springframework.security.oauth2.common.AuthenticationScheme;
 import org.springframework.security.oauth2.provider.ClientDetails;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.StringUtils;
 
 import java.net.URLEncoder;
@@ -137,7 +136,7 @@ public class UaaTestAccounts implements TestAccounts {
      * @param password client_secret
      * @return OAuth2 encoded client_id and client_secret, e.g. https://datatracker.ietf.org/doc/html/rfc2617#section-2
      */
-    public String getAuthorizationHeader(String username, String password) {
+    public static String getAuthorizationHeader(String username, String password) {
         String credentials =
             String.format("%s:%s", URLEncoder.encode(username, StandardCharsets.UTF_8), URLEncoder.encode(password, StandardCharsets.UTF_8));
         return String.format("Basic %s", new String(Base64.encode(credentials.getBytes())));
@@ -237,7 +236,7 @@ public class UaaTestAccounts implements TestAccounts {
         return resource;
     }
 
-    public ClientDetails getClientDetails(String prefix, BaseClientDetails defaults) {
+    public ClientDetails getClientDetails(String prefix, UaaClientDetails defaults) {
         String clientId = environment.getProperty(prefix + ".id", defaults.getClientId());
         String clientSecret = environment.getProperty(prefix + ".secret", defaults.getClientSecret());
         String resourceIds = environment.getProperty(prefix + ".resource-ids",
@@ -250,7 +249,7 @@ public class UaaTestAccounts implements TestAccounts {
                         StringUtils.collectionToCommaDelimitedString(defaults.getAuthorities()));
         String redirectUris = environment.getProperty(prefix + ".redirect-uri",
                         StringUtils.collectionToCommaDelimitedString(defaults.getRegisteredRedirectUri()));
-        BaseClientDetails result = new BaseClientDetails(clientId, resourceIds, scopes, grantTypes, authorities,
+        UaaClientDetails result = new UaaClientDetails(clientId, resourceIds, scopes, grantTypes, authorities,
                         redirectUris);
         result.setClientSecret(clientSecret);
         return result;

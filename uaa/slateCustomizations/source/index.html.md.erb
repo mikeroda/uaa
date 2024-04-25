@@ -156,9 +156,12 @@ _Response Headers_
 
 # Token
 
-The `/oauth/token` endpoint requires client authentication to be accessed. Client Authentication can be passed as
-as part of the request authorization header, using basic authentication, or as part of the request parameters, using the `client_id` and `client_secret` parameter
-names.
+The `/oauth/token` endpoint requires client authentication to be accessed, except you allow the public usage. For more details about public usage see
+allowpublic flag in client details configuration. For confidential client usages, the client authentication can be passed as part of the request
+authorization header, using basic authentication, or as part of the request parameters, using the combination of `client_id` and `client_secret` or
+`client_assertion_type` and `client_assertion` parameter names. The client authentication methods are explained in the
+[OpenID Core specification](https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication). UAA supports currently none, client_secret_basic,
+client_secret_post and private_key_jwt.
 
 ## Authorization Code Grant
 
@@ -227,26 +230,6 @@ _Response Fields_
 
 <%= render('TokenEndpointDocs/getTokenUsingPasswordGrant/response-fields.md') %>
 
-### Password Grant with MFA
-
-<aside class="warning">
-  MFA support is in active development and is not ready for production use.
-</aside>
-
-A password grant can be completed when multi-factor authentication is enabled.
-
-
-<%= render('TokenEndpointDocs/getTokenUsingMfaPasswordGrant/curl-request.md') %>
-<%= render('TokenEndpointDocs/getTokenUsingMfaPasswordGrant/http-request.md') %>
-<%= render('TokenEndpointDocs/getTokenUsingMfaPasswordGrant/http-response.md') %>
-
-_Request Parameters_
-
-<%= render('TokenEndpointDocs/getTokenUsingMfaPasswordGrant/request-parameters.md') %>
-
-_Response Fields_
-
-<%= render('TokenEndpointDocs/getTokenUsingMfaPasswordGrant/response-fields.md') %>
 
 ### One-time Passcode
 
@@ -394,6 +377,39 @@ _Response Fields_
 <aside class="success">
   Added in UAA 3.3.0
 </aside>
+
+Both access and refresh tokens can be passed to the ``/revoke`` endpoint.
+
+When the ``/revoke`` endpoint is successfully invoked with an access token, and then when the same token is
+passed to the UAA Introspect Token endpoint (``/introspect``), the UAA Introspect Token endpoint
+will respond with ``"active": false``.
+
+If the access token is in the JWT format (as opposed to the opaque format), the server config ``uaa.jwt.revocable`` or
+the Identity Zone config ``config.tokenPolicy.jwtRevocable`` must be set to ``true`` for
+the revocation to work. However, OAuth resource servers are not required to call the UAA Introspect
+Token endpoint to validate the token. Once issued, from a security point of view, a valid access token
+in the JWT format should be considered valid until its expiry. Hence, we do not recommend
+relying on this endpoint to revoke access tokens in the JWT format. If the ability
+to remove/limit access after the tokens are issued is important to you, we recommend the following instead:
+
+* Ask the OAuth client to use opaque tokens only, so that the OAuth resource server is required to use
+the UAA Introspect Token endpoint to validate that the tokens have not been revoked.
+* If the access tokens are in the JWT format, configure the access tokens to be short-lived
+(e.g. a few minutes), and when needed, revoke the more long-lived refresh tokens so that they
+may no longer be used to obtain refreshed access tokens.
+
+When the ``/revoke`` endpoint is successfully invoked with a refresh token,
+the refresh token can no longer be used to perform the Refresh Token grant.
+
+Refresh tokens in any format can be revoked using the "Revoke all tokens for a user" endpoint (``/oauth/token/revoke/user/{userId}``),
+the "Revoke all tokens for a client" endpoint (``/oauth/token/revoke/client/{clientId}``), or
+the "Revoke all tokens for a user and client combination" endpoint (``/oauth/token/revoke/user/{userId}/client/{clientId}``).
+
+Refresh tokens in the opaque format can be individually revoked using
+the "Revoke a single token" endpoint (``/oauth/token/revoke/{tokenId}``).
+However, refresh tokens in the JWT format can only be individually revoked using
+the "Revoke a single token" endpoint when the server config ``uaa.jwt.revocable`` or
+the Identity Zone config ``config.tokenPolicy.jwtRevocable`` is set to ``true``.
 
 ### Revoke all tokens for a user
 
@@ -632,7 +648,7 @@ _Error Codes_
 ## Logout.do
 
 The logout endpoint is meant to be used by applications to log the user out of the UAA session. UAA will only log a user out of the UAA session if they also hit this endpoint, and may also perform Single Logout with SAML providers if configured to do so.
-UAA will also log users out of OIDC proxied authenticated sessions based on [OpenID Connect Session Management](https://openid.net/specs/openid-connect-session-1_0.html).
+UAA may also log users out of OIDC proxied authenticated sessions based on [OpenID Connect Session Management](https://openid.net/specs/openid-connect-session-1_0.html) if configured to do so.
 The recommendation for application authors is to:
 
 * provide a local logout feature specific to the client application
@@ -1157,10 +1173,10 @@ _Request and Response Fields_
 
 _Error Codes_
 
-| Error Code | Description                                                           |
-|------------|-----------------------------------------------------------------------|
-| 403        | Forbidden - Insufficient scope                                        |
-| 422        | Unprocessable Entity - Invalid config                                 |
+| Error Code | Description                                                                                            |
+|------------|--------------------------------------------------------------------------------------------------------|
+| 403        | Forbidden - Insufficient scope                                                                         |
+| 422        | Unprocessable Entity - Invalid config or updating IdP with alias while `aliasEntitiesEnabled` is false |
 
 ## Delete
 
@@ -1186,10 +1202,10 @@ _Response Fields_
 
 _Error Codes_
 
-| Error Code | Description                                                           |
-|------------|-----------------------------------------------------------------------|
-| 403        | Forbidden - Insufficient scope                                        |
-| 422        | Unprocessable Entity                                                  |
+| Error Code | Description                                                                                |
+|------------|--------------------------------------------------------------------------------------------|
+| 403        | Forbidden - Insufficient scope                                                             |
+| 422        | Unprocessable Entity (e.g., deleting IdP with alias while `aliasEntitiesEnabled` is false) |
 
 ## Force password change for Users
 <%= render('IdentityProviderEndpointDocs/patchIdentityProviderStatus/curl-request.md') %>
@@ -1220,291 +1236,6 @@ _Error Codes_
 | 403        | Forbidden - Insufficient scope                                        |
 | 422        | Unprocessable Entity - Invalid config                                 |
 
-
-# Service Providers
-
-UAA is capable of acting as a SAML Identity Provider (IdP). When UAA receives a SAML authentication request from a recognized SAML Service Provider (SP), UAA will authenticate the user then send a SAML authentication response back to the SAML SP. If UAA succesfully authenticated the user the SAML authentication response will contain a SAML assertion as per specification.
-
-Obtaining the UAA SAML IdP metadata:
-
-In order to establish trust, a SAML IdP and SAML SP exchange SAML metadata which contains pulbic certificates as well as the endpoints used to communicate amongst each other. Your SAML SP will likely require the UAA SAML IdP metadata in order to make authentication requests to UAA. You can obtain this metadata by making a GET request to the /saml/idp/metadata endpoint.
-
-GET http://localhost:8080/uaa/saml/idp/metadata
-
-## Initiate IDP Login Flow
-
-When the UAA is an IdP, you can initiate the login flow to the Service Provider, SP, by using the `initiate` endpoint
-This is a browser flow.
-
-<%= render('UaaSamlIDPEndpointDocs/document_idp_initiated_flow/curl-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/document_idp_initiated_flow/http-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/document_idp_initiated_flow/response-body.md') %>
-
-_Request Parameters_
-
-<%= render('UaaSamlIDPEndpointDocs/document_idp_initiated_flow/request-parameters.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                                             |
-|------------|-----------------------------------------------------------------------------------------|
-| 400        | If IDP initiated login is not enabled, the SP parameter is incorrect or SP is disabled. |
-
-
-## List
-
-<%= render('UaaSamlIDPEndpointDocs/getAllServiceProviders/curl-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/getAllServiceProviders/http-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/getAllServiceProviders/http-response.md') %>
-
-_Request Headers_
-
-<%= render('UaaSamlIDPEndpointDocs/getAllServiceProviders/request-headers.md') %>
-
-_Response Fields_
-
-<%= render('UaaSamlIDPEndpointDocs/getAllServiceProviders/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                           |
-|------------|-----------------------------------------------------------------------|
-| 403        | Forbidden - Insufficient scope                                        |
-
-## Get
-
-<%= render('UaaSamlIDPEndpointDocs/getServiceProvider/curl-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/getServiceProvider/http-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/getServiceProvider/http-response.md') %>
-
-_Request Headers_
-
-<%= render('UaaSamlIDPEndpointDocs/getServiceProvider/request-headers.md') %>
-
-_Path Parameters_
-
-<%= render('UaaSamlIDPEndpointDocs/getServiceProvider/path-parameters.md') %>
-
-_Response Fields_
-
-<%= render('UaaSamlIDPEndpointDocs/getServiceProvider/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                           |
-|------------|-----------------------------------------------------------------------|
-| 403        | Forbidden - Insufficient scope                                        |
-
-## Create
-
-<%= render('UaaSamlIDPEndpointDocs/createServiceProvider/curl-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/createServiceProvider/http-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/createServiceProvider/http-response.md') %>
-
-_Request Headers_
-
-<%= render('UaaSamlIDPEndpointDocs/createServiceProvider/request-headers.md') %>
-
-_Request Fields_
-
-<%= render('UaaSamlIDPEndpointDocs/createServiceProvider/request-fields.md') %>
-
-_Response Fields_
-
-<%= render('UaaSamlIDPEndpointDocs/createServiceProvider/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                           |
-|------------|-----------------------------------------------------------------------|
-| 403        | Forbidden - Insufficient scope                                        |
-| 422        | Unprocessable Entity                                                  |
-| 409        | Conflict - A provider with the same entity id and zone id exists.     |
-
-
-## Update
-
-<%= render('UaaSamlIDPEndpointDocs/updateServiceProvider/curl-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/updateServiceProvider/http-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/updateServiceProvider/http-response.md') %>
-
-_Request Headers_
-
-<%= render('UaaSamlIDPEndpointDocs/updateServiceProvider/request-headers.md') %>
-
-_Request Fields_
-
-<%= render('UaaSamlIDPEndpointDocs/updateServiceProvider/request-fields.md') %>
-
-_Path Parameters_
-
-<%= render('UaaSamlIDPEndpointDocs/updateServiceProvider/path-parameters.md') %>
-
-_Response Fields_
-
-<%= render('UaaSamlIDPEndpointDocs/updateServiceProvider/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                           |
-|------------|-----------------------------------------------------------------------|
-| 403        | Forbidden - Insufficient scope                                        |
-| 422        | Unprocessable Entity                                                  |
-| 409        | Conflict - A provider with the same entity id and zone id exists.     |
-
-## Delete
-
-<%= render('UaaSamlIDPEndpointDocs/deleteServiceProvider/curl-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/deleteServiceProvider/http-request.md') %>
-<%= render('UaaSamlIDPEndpointDocs/deleteServiceProvider/http-response.md') %>
-
-_Request Headers_
-
-<%= render('UaaSamlIDPEndpointDocs/deleteServiceProvider/request-headers.md') %>
-
-_Path Parameters_
-
-<%= render('UaaSamlIDPEndpointDocs/deleteServiceProvider/path-parameters.md') %>
-
-_Response Fields_
-
-<%= render('UaaSamlIDPEndpointDocs/deleteServiceProvider/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                           |
-|------------|-----------------------------------------------------------------------|
-| 403        | Forbidden - Insufficient scope                                        |
-
-
-# MFA Providers
-
-## Create
-
-<aside class="success">
-  Added in UAA 4.13.0
-</aside>
-
-<%= render('MfaProviderEndpointDocs/testCreateGoogleMfaProvider/curl-request.md') %>
-<%= render('MfaProviderEndpointDocs/testCreateGoogleMfaProvider/http-request.md') %>
-<%= render('MfaProviderEndpointDocs/testCreateGoogleMfaProvider/http-response.md') %>
-
-_Request Headers_
-
-<%= render('MfaProviderEndpointDocs/testCreateGoogleMfaProvider/request-headers.md') %>
-
-_Request Fields_
-
-<%= render('MfaProviderEndpointDocs/testCreateGoogleMfaProvider/request-fields.md') %>
-
-
-_Response Fields_
-
-<%= render('MfaProviderEndpointDocs/testCreateGoogleMfaProvider/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                                                            |
-|------------|--------------------------------------------------------------------------------------------------------|
-| 400        | Bad Request - JSON body was malformed or missing fields                                                |
-| 401        | Unauthorized - Invalid token                                                                           |
-| 403        | Forbidden - Insufficient scope (`uaa.admin` or `zones.<zoneId>.admin` is required to create a MFA provider)|
-| 422        | Unprocessable Entity - Some values in the MFA configuration are invalid                                |
-
-
-## Update
-
-<aside class="warning">
-  Update is not supported for MFA provider.
-</aside>
-
-
-
-
-_Error Codes_
-
-| Error Code | Description                                                                                            |
-|------------|--------------------------------------------------------------------------------------------------------|
-| 405        | Method Not Allowed                                                                                     |
-
-
-## Get
-
-<aside class="success">
-  Added in UAA 4.13.0
-</aside>
-
-<%= render('MfaProviderEndpointDocs/testGetMfaProvider/curl-request.md') %>
-<%= render('MfaProviderEndpointDocs/testGetMfaProvider/http-request.md') %>
-<%= render('MfaProviderEndpointDocs/testGetMfaProvider/http-response.md') %>
-
-_Request Headers_
-
-<%= render('MfaProviderEndpointDocs/testGetMfaProvider/request-headers.md') %>
-
-_Response Fields_
-
-<%= render('MfaProviderEndpointDocs/testGetMfaProvider/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                                                            |
-|------------|--------------------------------------------------------------------------------------------------------|
-| 401        | Unauthorized - Invalid token                                                                           |
-| 403        | Forbidden - Insufficient scope (`uaa.admin` or `zones.<zoneId>.admin` is required to create a MFA provider)|
-| 404        | Not Found - Provider id not found                                                                      |
-
-
-## Delete
-
-<aside class="success">
-  Added in UAA 4.13.0
-</aside>
-
-<%= render('MfaProviderEndpointDocs/testDeleteMfaProvider/curl-request.md') %>
-<%= render('MfaProviderEndpointDocs/testDeleteMfaProvider/http-request.md') %>
-<%= render('MfaProviderEndpointDocs/testDeleteMfaProvider/http-response.md') %>
-
-_Request Headers_
-
-<%= render('MfaProviderEndpointDocs/testDeleteMfaProvider/request-headers.md') %>
-
-_Response Fields_
-
-<%= render('MfaProviderEndpointDocs/testDeleteMfaProvider/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                                                            |
-|------------|--------------------------------------------------------------------------------------------------------|
-| 401        | Unauthorized - Invalid token                                                                           |
-| 403        | Forbidden - Insufficient scope (`uaa.admin` or `zones.<zoneId>.admin` is required to create a MFA provider)|
-| 404        | Not Found - Provider id not found                                                                      |
-
-## List
-
-<aside class="success">
-  Added in UAA 4.13.0
-</aside>
-
-<%= render('MfaProviderEndpointDocs/testListMfaProviders/curl-request.md') %>
-<%= render('MfaProviderEndpointDocs/testListMfaProviders/http-request.md') %>
-<%= render('MfaProviderEndpointDocs/testListMfaProviders/http-response.md') %>
-
-_Request Headers_
-
-<%= render('MfaProviderEndpointDocs/testListMfaProviders/request-headers.md') %>
-
-_Response Fields_
-
-<%= render('MfaProviderEndpointDocs/testListMfaProviders/response-fields.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                                                            |
-|------------|--------------------------------------------------------------------------------------------------------|
-| 401        | Unauthorized - Invalid token                                                                           |
-| 403        | Forbidden - Insufficient scope (`uaa.admin` or `zones.<zoneId>.admin` is required to create a MFA provider)|
 
 # Users
 
@@ -1948,27 +1679,6 @@ _Error Codes_
 | Error Code | Description                                                           |
 |------------|-----------------------------------------------------------------------|
 | 400        | Bad Request - Incorrect version supplied in If-Match header           |
-| 403        | Forbidden - Insufficient scope or internal user management disabled   |
-| 404        | Not Found - User not found                                            |
-
-## Delete MFA registration
-
-<%= render('ScimUserEndpointDocs/deleteMfaRegistration/curl-request.md') %>
-<%= render('ScimUserEndpointDocs/deleteMfaRegistration/http-request.md') %>
-<%= render('ScimUserEndpointDocs/deleteMfaRegistration/http-response.md') %>
-
-_Path Parameters_
-
-<%= render('ScimUserEndpointDocs/deleteMfaRegistration/path-parameters.md') %>
-
-_Request Headers_
-
-<%= render('ScimUserEndpointDocs/deleteMfaRegistration/request-headers.md') %>
-
-_Error Codes_
-
-| Error Code | Description                                                           |
-|------------|-----------------------------------------------------------------------|
 | 403        | Forbidden - Insufficient scope or internal user management disabled   |
 | 404        | Not Found - User not found                                            |
 
@@ -2471,6 +2181,29 @@ _Request Headers_
 _Request Fields_
 
 <%= render('ClientAdminEndpointDocs/changeClientSecret/request-fields.md') %>
+
+## Change Client JWT
+This configuration can be done if client authentication is performed with method private_key_jwt
+instead of secret based client authentication. See details for client authentiction with [OAuth2](https://oauth.net/2/client-authentication/) and/or
+[OpenID Connect](https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication).
+
+The client can send a client_assertion for authentication. The signature of the assertion is validated either with the jwks_uri or the internal jwks public keys.
+
+<%= render('ClientAdminEndpointDocs/changeClientJwt/curl-request.md') %>
+<%= render('ClientAdminEndpointDocs/changeClientJwt/http-request.md') %>
+<%= render('ClientAdminEndpointDocs/changeClientJwt/http-response.md') %>
+
+_Path Parameters_
+
+<%= render('ClientAdminEndpointDocs/changeClientJwt/path-parameters.md') %>
+
+_Request Headers_
+
+<%= render('ClientAdminEndpointDocs/changeClientJwt/request-headers.md') %>
+
+_Request Fields_
+
+<%= render('ClientAdminEndpointDocs/changeClientJwt/request-fields.md') %>
 
 ## List
 

@@ -24,7 +24,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.oauth2.common.util.RandomValueStringGenerator;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
 import org.w3c.dom.NodeList;
@@ -75,7 +75,7 @@ class SamlKeyRotationMockMvcTests {
         samlConfig.addKey("key2", samlKey2);
         identityZone.getConfig().setSamlConfig(samlConfig);
 
-        BaseClientDetails zoneAdminClient = new BaseClientDetails("admin", null,
+        UaaClientDetails zoneAdminClient = new UaaClientDetails("admin", null,
             "openid",
             "client_credentials,authorization_code",
             "clients.admin,scim.read,scim.write",
@@ -87,7 +87,7 @@ class SamlKeyRotationMockMvcTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/saml/idp/metadata", "/saml/metadata"})
+    @ValueSource(strings = {"/saml/metadata"})
     void key_rotation(String url) throws Exception {
         //default with three keys
         String metadata = getMetadata(url);
@@ -120,7 +120,7 @@ class SamlKeyRotationMockMvcTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/saml/idp/metadata", "/saml/metadata"})
+    @ValueSource(strings = {"/saml/metadata"})
     void check_metadata_signature_key(String url) throws Exception {
         String metadata = getMetadata(url);
 

@@ -14,9 +14,11 @@ package org.cloudfoundry.identity.uaa.integration;
 
 import org.cloudfoundry.identity.uaa.ServerRunning;
 import org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils;
+import org.cloudfoundry.identity.uaa.oauth.jwt.Jwt;
 import org.cloudfoundry.identity.uaa.oauth.jwt.JwtHelper;
 import org.cloudfoundry.identity.uaa.test.TestAccountSetup;
 import org.cloudfoundry.identity.uaa.test.UaaTestAccounts;
+import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 import org.springframework.http.HttpEntity;
@@ -24,7 +26,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.jwt.Jwt;
 import org.springframework.security.oauth2.client.token.grant.code.AuthorizationCodeResourceDetails;
 import org.springframework.web.client.RestTemplate;
 
@@ -32,6 +33,7 @@ import java.net.URI;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -190,6 +192,34 @@ public class AuthorizationCodeGrantIntegrationTests {
                         Void.class
                 );
         assertEquals(HttpStatus.NOT_FOUND, result.getStatusCode());
+    }
+
+    @Test
+    public void testAuthorizationRequestWithoutRedirectUri() {
+
+      Map<String, String> body = IntegrationTestUtils.getAuthorizationCodeTokenMap(serverRunning,
+          testAccounts,
+          "login",
+          "loginsecret",
+          testAccounts.getUserName(),
+          testAccounts.getPassword(),
+          null,
+          null,
+          null,
+          null,
+          false);
+
+      assertNotNull("Token not received", body.get("access_token"));
+
+      try {
+        IntegrationTestUtils.getAuthorizationCodeTokenMap(serverRunning, testAccounts, "app", "appclientsecret",
+            testAccounts.getUserName(), testAccounts.getPassword(),
+            null, null, null, null, false);
+      } catch (AssertionError error) {
+        // expected
+        return;
+      }
+      Assert.fail("Token retrival not allowed");
     }
 
     public void testSuccessfulAuthorizationCodeFlow_Internal() {

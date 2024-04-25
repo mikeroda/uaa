@@ -1,6 +1,6 @@
 package org.cloudfoundry.identity.uaa.user;
 
-import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.cloudfoundry.identity.uaa.util.beans.DbUtils;
 import org.cloudfoundry.identity.uaa.db.DatabaseUrlModifier;
 import org.cloudfoundry.identity.uaa.db.Vendor;
@@ -265,6 +265,10 @@ public class JdbcUaaUserDatabase implements UaaUserDatabase {
             Set<String> authorities = new HashSet<>();
             getAuthorities(authorities, Collections.singletonList(userId));
             authorities.addAll(identityZoneManager.getCurrentIdentityZone().getConfig().getUserConfig().getDefaultGroups());
+            Set<String> allowedGroups = identityZoneManager.getCurrentIdentityZone().getConfig().getUserConfig().resultingAllowedGroups();
+            if (allowedGroups != null) {
+                authorities.retainAll(allowedGroups);
+            }
             return StringUtils.collectionToCommaDelimitedString(new HashSet<>(authorities));
         }
 

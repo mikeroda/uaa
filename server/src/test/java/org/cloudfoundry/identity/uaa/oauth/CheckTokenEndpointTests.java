@@ -19,6 +19,7 @@ import org.cloudfoundry.identity.uaa.approval.Approval.ApprovalStatus;
 import org.cloudfoundry.identity.uaa.approval.ApprovalService;
 import org.cloudfoundry.identity.uaa.approval.ApprovalStore;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthenticationTestFactory;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.oauth.approval.InMemoryApprovalStore;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
@@ -61,10 +62,10 @@ import org.springframework.security.oauth2.common.exceptions.InvalidScopeExcepti
 import org.springframework.security.oauth2.common.exceptions.InvalidTokenException;
 import org.springframework.security.oauth2.provider.AuthorizationRequest;
 import org.springframework.security.oauth2.provider.OAuth2Authentication;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -109,8 +110,8 @@ public class CheckTokenEndpointTests {
     private AuthorizationRequest authorizationRequest = null;
     private UaaUserPrototype uaaUserPrototype;
     private UaaUser user;
-    private BaseClientDetails defaultClient;
-    private Map<String, BaseClientDetails> clientDetailsStore;
+    private UaaClientDetails defaultClient;
+    private Map<String, UaaClientDetails> clientDetailsStore;
     private List<GrantedAuthority> userAuthorities;
     private IdentityZoneProvisioning zoneProvisioning = mock(IdentityZoneProvisioning.class);
     private RevocableTokenProvisioning tokenProvisioning;
@@ -223,7 +224,7 @@ public class CheckTokenEndpointTests {
 
         nowMillis = 10000L;
         timeService = mock(TimeService.class);
-        when(timeService.getCurrentTimeMillis()).thenReturn(nowMillis);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(nowMillis);
         when(timeService.getCurrentDate()).thenCallRealMethod();
         userAuthorities = new ArrayList<>();
         userAuthorities.add(new SimpleGrantedAuthority("read"));
@@ -301,7 +302,7 @@ public class CheckTokenEndpointTests {
                 .setStatus(ApprovalStatus.APPROVED)
                 .setLastUpdatedAt(oneSecondAgo), IdentityZoneHolder.get().getId());
 
-        defaultClient = new BaseClientDetails("client", "scim, cc", "read, write", "authorization_code, password", "scim.read, scim.write, cat.pet", "http://localhost:8080/uaa");
+        defaultClient = new UaaClientDetails("client", "scim, cc", "read, write", "authorization_code, password", "scim.read, scim.write, cat.pet", "http://localhost:8080/uaa");
         clientDetailsStore =
                 Collections.singletonMap(
                         "client",
@@ -357,11 +358,11 @@ public class CheckTokenEndpointTests {
 
     @Test
     public void testClientWildcard() throws Exception {
-        BaseClientDetails client =
-                new BaseClientDetails("client", "zones", "zones.*.admin", "authorization_code, password",
+        UaaClientDetails client =
+                new UaaClientDetails("client", "zones", "zones.*.admin", "authorization_code, password",
                         "scim.read, scim.write", "http://localhost:8080/uaa");
         client.setAutoApproveScopes(Collections.singletonList("zones.*.admin"));
-        Map<String, BaseClientDetails> clientDetailsStore = Collections.singletonMap("client", client);
+        Map<String, UaaClientDetails> clientDetailsStore = Collections.singletonMap("client", client);
 
         clientDetailsService.setClientDetailsStore(IdentityZoneHolder.get().getId(), clientDetailsStore);
         tokenServices.setClientDetailsService(clientDetailsService);
@@ -570,7 +571,7 @@ public class CheckTokenEndpointTests {
     @Test(expected = InvalidTokenException.class)
     public void revokingScopesFromClient_invalidatesToken() throws Exception {
         OAuth2AccessToken accessToken = tokenServices.createAccessToken(authentication);
-        defaultClient = new BaseClientDetails("client", "scim, cc", "write", "authorization_code, password", "scim.read, scim.write", "http://localhost:8080/uaa");
+        defaultClient = new UaaClientDetails("client", "scim, cc", "write", "authorization_code, password", "scim.read, scim.write", "http://localhost:8080/uaa");
         clientDetailsStore = Collections.singletonMap("client", defaultClient);
         clientDetailsService.setClientDetailsStore(IdentityZoneHolder.get().getId(), clientDetailsStore);
 
@@ -579,7 +580,7 @@ public class CheckTokenEndpointTests {
 
     @Test(expected = InvalidTokenException.class)
     public void revokingAuthoritiesFromClients_invalidatesToken() throws Exception {
-        defaultClient = new BaseClientDetails("client", "scim, cc", "write,read", "authorization_code, password", "scim.write", "http://localhost:8080/uaa");
+        defaultClient = new UaaClientDetails("client", "scim, cc", "write,read", "authorization_code, password", "scim.write", "http://localhost:8080/uaa");
         clientDetailsStore = Collections.singletonMap(
                 "client",
                 defaultClient
@@ -611,10 +612,12 @@ public class CheckTokenEndpointTests {
         String firstClientSecret = "oldsecret";
         String secondClientSecret = "newsecret";
         defaultClient.setClientSecret(firstClientSecret);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(1000L);
         OAuth2AccessToken accessToken = tokenServices.createAccessToken(authentication);
 
         defaultClient.setClientSecret(firstClientSecret + " " + secondClientSecret);
         endpoint.checkToken(accessToken.getValue(), Collections.emptyList(), request);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(1000L);
         accessToken = tokenServices.createAccessToken(authentication);
         endpoint.checkToken(accessToken.getValue(), Collections.emptyList(), request);
     }
@@ -625,10 +628,12 @@ public class CheckTokenEndpointTests {
         String secondClientSecret = "newsecret";
 
         defaultClient.setClientSecret(firstClientSecret + " " + secondClientSecret);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(1000L);
         OAuth2AccessToken accessToken = tokenServices.createAccessToken(authentication);
         endpoint.checkToken(accessToken.getValue(), Collections.emptyList(), request);
 
         defaultClient.setClientSecret(secondClientSecret);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(1000L);
         accessToken = tokenServices.createAccessToken(authentication);
         endpoint.checkToken(accessToken.getValue(), Collections.emptyList(), request);
     }
@@ -914,7 +919,7 @@ public class CheckTokenEndpointTests {
         OAuth2AccessToken accessToken = tokenServices.createAccessToken(authentication);
         Claims result = endpoint.checkToken(accessToken.getValue(), Collections.emptyList(), request);
         int expiresIn = 60 * 60 * 12;
-        assertTrue(expiresIn + nowMillis / 1000 >= result.getExp());
+        assertTrue(expiresIn + Instant.now().toEpochMilli() / 1000 >= result.getExp());
     }
 
     @Test
@@ -933,13 +938,14 @@ public class CheckTokenEndpointTests {
 
     @Test(expected = InvalidTokenException.class)
     public void testExpiredToken() throws Exception {
-        BaseClientDetails clientDetails = new BaseClientDetails("client", "scim, cc", "read, write",
+        UaaClientDetails clientDetails = new UaaClientDetails("client", "scim, cc", "read, write",
                 "authorization_code, password", "scim.read, scim.write", "http://localhost:8080/uaa");
         Integer validitySeconds = 1;
         clientDetails.setAccessTokenValiditySeconds(validitySeconds);
-        Map<String, BaseClientDetails> clientDetailsStore = Collections.singletonMap("client", clientDetails);
+        Map<String, UaaClientDetails> clientDetailsStore = Collections.singletonMap("client", clientDetails);
         clientDetailsService.setClientDetailsStore(IdentityZoneHolder.get().getId(), clientDetailsStore);
         tokenServices.setClientDetailsService(clientDetailsService);
+        when(timeService.getCurrentTimeMillis()).thenReturn(1000L);
         OAuth2AccessToken accessToken = tokenServices.createAccessToken(authentication);
 
         when(timeService.getCurrentTimeMillis()).thenReturn(nowMillis + validitySeconds.longValue() * 1000 + 1L);

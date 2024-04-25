@@ -1,5 +1,9 @@
 package org.cloudfoundry.identity.uaa.authentication.manager;
 
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSSigner;
+import com.nimbusds.jose.util.Base64URL;
 import com.nimbusds.jose.util.X509CertUtils;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.JWTParser;
@@ -17,7 +21,6 @@ import org.cloudfoundry.identity.uaa.oauth.KeyInfoService;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
 import org.cloudfoundry.identity.uaa.oauth.jwt.JwtClientAuthentication;
 import org.cloudfoundry.identity.uaa.oauth.jwt.JwtHelperX5tTest;
-import org.cloudfoundry.identity.uaa.oauth.jwt.Signer;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
 import org.cloudfoundry.identity.uaa.provider.IdentityProviderProvisioning;
 import org.cloudfoundry.identity.uaa.provider.OIDCIdentityProviderDefinition;
@@ -48,7 +51,6 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -58,6 +60,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.*;
@@ -371,7 +374,7 @@ class PasswordGrantAuthenticationManagerTest {
     }
 
     @Test
-    void testOIDCPasswordGrantProviderJwtClientCredentials() throws MalformedURLException, ParseException {
+    void testOIDCPasswordGrantProviderJwtClientCredentials() throws ParseException, JOSEException {
         // Given
         mockKeyInfoService();
         /* mock idp config using jwt client authentication */
@@ -476,7 +479,6 @@ class PasswordGrantAuthenticationManagerTest {
         when(auth.getCredentials()).thenReturn("koala");
         UaaAuthenticationDetails uaaAuthDetails = mock(UaaAuthenticationDetails.class);
         Map<String, String[]> params = new HashMap<>();
-        params.put("mfacode", new String[]{"123456"});
         params.put("multivalue", new String[]{"123456","654321"});
         params.put("emptyvalue", new String[0]);
         params.put("emptystring", new String[]{""});
@@ -489,7 +491,6 @@ class PasswordGrantAuthenticationManagerTest {
         prompts.add(new Prompt("username","text", "Email"));
         prompts.add(new Prompt("password","password", "Password"));
         prompts.add(new Prompt("passcode","password", "Temporary Authentication Code"));
-        prompts.add(new Prompt("mfacode","password", "TOTP-Code"));
         prompts.add(new Prompt("multivalue","password", "TOTP-Code"));
         prompts.add(new Prompt("emptyvalue","password", "TOTP-Code"));
         prompts.add(new Prompt("emptystring","password", "TOTP-Code"));
@@ -517,12 +518,11 @@ class PasswordGrantAuthenticationManagerTest {
         assertTrue(httpEntity.hasBody());
         assertTrue(httpEntity.getBody() instanceof MultiValueMap);
         MultiValueMap<String,String> body = (MultiValueMap<String, String>)httpEntity.getBody();
-        assertEquals(5, body.size());
+        assertEquals(4, body.size());
         assertEquals(Collections.singletonList("password"), body.get("grant_type"));
         assertEquals(Collections.singletonList("id_token"), body.get("response_type"));
         assertEquals(Collections.singletonList("marissa"), body.get("username"));
         assertEquals(Collections.singletonList("koala"), body.get("password"));
-        assertEquals(Collections.singletonList("123456"), body.get("mfacode"));
         assertNull(body.get("passcode"));
         assertNull(body.get("multivalue"));
         assertNull(body.get("emptyvalue"));
@@ -876,10 +876,10 @@ class PasswordGrantAuthenticationManagerTest {
         assertThrows(BadCredentialsException.class, () -> instance.oidcPasswordGrant(authentication, config));
     }
 
-    private void mockKeyInfoService() {
+    private void mockKeyInfoService() throws JOSEException {
         KeyInfoService keyInfoService = mock(KeyInfoService.class);
         KeyInfo keyInfo = mock(KeyInfo.class);
-        Signer signer = mock(Signer.class);
+        JWSSigner signer = mock(JWSSigner.class);
         when(externalOAuthAuthenticationManager.getKeyInfoService()).thenReturn(keyInfoService);
         when(keyInfoService.getActiveKey()).thenReturn(keyInfo);
         when(keyInfoService.getKey("id")).thenReturn(keyInfo);
@@ -887,7 +887,8 @@ class PasswordGrantAuthenticationManagerTest {
         when(keyInfo.getSigner()).thenReturn(signer);
         when(keyInfo.verifierCertificate()).thenReturn(Optional.of(X509CertUtils.parse(JwtHelperX5tTest.CERTIFICATE_1)));
         when(keyInfo.keyId()).thenReturn("id");
-        when(signer.sign(any())).thenReturn("dummy".getBytes());
+        when(signer.supportedJWSAlgorithms()).thenReturn(Set.of(JWSAlgorithm.RS256));
+        when(signer.sign(any(), any())).thenReturn(new Base64URL("dummy"));
     }
 
     private Authentication getAuthenticationWithUaaHint() {

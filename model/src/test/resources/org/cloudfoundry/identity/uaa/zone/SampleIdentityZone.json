@@ -122,7 +122,13 @@
         "roles",
         "user_attributes",
         "uaa.offline_token"
-      ]
+      ],
+      "allowedGroups": [
+        "scim.me",
+        "cloud_controller.user"
+      ],
+      "maxUsers": 1000,
+      "checkOriginEnabled": true
     }
   },
   "name": "Demo Login Page",

@@ -4,10 +4,12 @@ import org.cloudfoundry.identity.uaa.annotations.WithDatabaseContext;
 import org.cloudfoundry.identity.uaa.audit.event.EntityDeletedEvent;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthenticationTestFactory;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.login.util.RandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.oauth.UaaOauth2Authentication;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
+import org.cloudfoundry.identity.uaa.provider.ClientAlreadyExistsException;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
 import org.hamcrest.Matchers;
@@ -20,11 +22,9 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.provider.AuthorizationRequest;
-import org.springframework.security.oauth2.provider.ClientAlreadyExistsException;
 import org.springframework.security.oauth2.provider.ClientDetails;
-import org.springframework.security.oauth2.provider.NoSuchClientException;
+import org.cloudfoundry.identity.uaa.provider.NoSuchClientException;
 import org.springframework.security.oauth2.provider.OAuth2Authentication;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
 import org.springframework.util.StringUtils;
 
 import java.sql.Timestamp;
@@ -67,14 +67,14 @@ import static org.mockito.Mockito.when;
 class MultitenantJdbcClientDetailsServiceTests {
     private MultitenantJdbcClientDetailsService service;
 
-    private static final String SELECT_SQL = "select client_id, client_secret, resource_ids, scope, authorized_grant_types, web_server_redirect_uri, authorities, access_token_validity, refresh_token_validity, lastmodified, required_user_groups from oauth_client_details where client_id=?";
+    private static final String SELECT_SQL = "select client_id, client_secret, client_jwt_config, resource_ids, scope, authorized_grant_types, web_server_redirect_uri, authorities, access_token_validity, refresh_token_validity, lastmodified, required_user_groups from oauth_client_details where client_id=?";
 
-    private static final String INSERT_SQL = "insert into oauth_client_details (client_id, client_secret, resource_ids, scope, authorized_grant_types, web_server_redirect_uri, authorities, access_token_validity, refresh_token_validity, autoapprove, identity_zone_id, lastmodified, required_user_groups) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)";
+    private static final String INSERT_SQL = "insert into oauth_client_details (client_id, client_secret, client_jwt_config, resource_ids, scope, authorized_grant_types, web_server_redirect_uri, authorities, access_token_validity, refresh_token_validity, autoapprove, identity_zone_id, lastmodified, required_user_groups) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)";
 
     private RandomValueStringGenerator randomValueStringGenerator;
 
     private String dbRequestedUserGroups = "uaa.user,uaa.something";
-    private BaseClientDetails baseClientDetails;
+    private UaaClientDetails baseClientDetails;
     private JdbcTemplate spyJdbcTemplate;
     private IdentityZoneManager mockIdentityZoneManager;
     private String currentZoneId;
@@ -96,7 +96,7 @@ class MultitenantJdbcClientDetailsServiceTests {
         when(mockIdentityZoneManager.getCurrentIdentityZoneId()).thenReturn(currentZoneId);
         service = spy(new MultitenantJdbcClientDetailsService(spyJdbcTemplate, mockIdentityZoneManager, passwordEncoder));
 
-        baseClientDetails = new BaseClientDetails();
+        baseClientDetails = new UaaClientDetails();
         String clientId = "client-with-id-" + new RandomValueStringGenerator(36).generate();
         baseClientDetails.setClientId(clientId);
     }
@@ -211,7 +211,7 @@ class MultitenantJdbcClientDetailsServiceTests {
         int rowsInserted = jdbcTemplate.update(INSERT_SQL,
                 "clientIdWithNoDetails", null, null,
                 null, null, null, null, null, null, null,
-                currentZoneId,
+                null, currentZoneId,
                 new Timestamp(System.currentTimeMillis()),
                 dbRequestedUserGroups
         );
@@ -243,7 +243,7 @@ class MultitenantJdbcClientDetailsServiceTests {
         jdbcTemplate.update(INSERT_SQL,
                 "clientIdWithAddInfo", null, null,
                 null, null, null, null, null, null, null,
-                currentZoneId, lastModifiedDate,
+                null, currentZoneId, lastModifiedDate,
                 dbRequestedUserGroups);
         jdbcTemplate
                 .update("update oauth_client_details set additional_information=? where client_id=?",
@@ -269,11 +269,11 @@ class MultitenantJdbcClientDetailsServiceTests {
 
         String clientId = "client-with-autoapprove";
         jdbcTemplate.update(INSERT_SQL, clientId, null, null,
-                null, null, null, null, null, null, "foo.read", currentZoneId, lastModifiedDate, dbRequestedUserGroups);
+                null, null, null, null, null, null, null, "foo.read", currentZoneId, lastModifiedDate, dbRequestedUserGroups);
         jdbcTemplate
                 .update("update oauth_client_details set additional_information=? where client_id=?",
                         "{\"autoapprove\":[\"bar.read\"]}", clientId);
-        BaseClientDetails clientDetails = (BaseClientDetails) service
+        UaaClientDetails clientDetails = (UaaClientDetails) service
                 .loadClientByClientId(clientId);
 
         assertEquals(clientId, clientDetails.getClientId());
@@ -283,7 +283,7 @@ class MultitenantJdbcClientDetailsServiceTests {
         jdbcTemplate
                 .update("update oauth_client_details set additional_information=? where client_id=?",
                         "{\"autoapprove\":true}", clientId);
-        clientDetails = (BaseClientDetails) service
+        clientDetails = (UaaClientDetails) service
                 .loadClientByClientId(clientId);
         assertNull(clientDetails.getAdditionalInformation().get(ClientConstants.AUTO_APPROVE));
         assertThat(clientDetails.getAutoApproveScopes(), Matchers.hasItems("true"));
@@ -294,6 +294,7 @@ class MultitenantJdbcClientDetailsServiceTests {
         jdbcTemplate.update(INSERT_SQL,
                 "clientIdWithSingleDetails",
                 "mySecret",
+                "myClientJwtConfig",
                 "myResource",
                 "myScope",
                 "myAuthorizedGrantType",
@@ -306,27 +307,25 @@ class MultitenantJdbcClientDetailsServiceTests {
         ClientDetails clientDetails = service
                 .loadClientByClientId("clientIdWithSingleDetails");
 
-        assertEquals("clientIdWithSingleDetails", clientDetails.getClientId());
-        assertTrue(clientDetails.isSecretRequired());
-        assertEquals("mySecret", clientDetails.getClientSecret());
-        assertTrue(clientDetails.isScoped());
-        assertEquals(1, clientDetails.getScope().size());
-        assertEquals("myScope", clientDetails.getScope().iterator().next());
-        assertEquals(1, clientDetails.getResourceIds().size());
-        assertEquals("myResource", clientDetails.getResourceIds().iterator()
-                .next());
-        assertEquals(1, clientDetails.getAuthorizedGrantTypes().size());
-        assertEquals("myAuthorizedGrantType", clientDetails
-                .getAuthorizedGrantTypes().iterator().next());
-        assertEquals("myRedirectUri", clientDetails.getRegisteredRedirectUri()
-                .iterator().next());
-        assertEquals(1, clientDetails.getAuthorities().size());
-        assertEquals("myAuthority", clientDetails.getAuthorities().iterator()
-                .next().getAuthority());
-        assertEquals(new Integer(100),
-                clientDetails.getAccessTokenValiditySeconds());
-        assertEquals(new Integer(200),
-                clientDetails.getRefreshTokenValiditySeconds());
+        assertNotNull(clientDetails);
+        assertTrue(clientDetails instanceof UaaClientDetails);
+
+        UaaClientDetails uaaUaaClientDetails = (UaaClientDetails) clientDetails;
+        assertEquals("clientIdWithSingleDetails", uaaUaaClientDetails.getClientId());
+        assertTrue(uaaUaaClientDetails.isSecretRequired());
+        assertEquals("mySecret", uaaUaaClientDetails.getClientSecret());
+        assertTrue(uaaUaaClientDetails.isScoped());
+        assertEquals(1, uaaUaaClientDetails.getScope().size());
+        assertEquals("myScope", uaaUaaClientDetails.getScope().iterator().next());
+        assertEquals(1, uaaUaaClientDetails.getResourceIds().size());
+        assertEquals("myResource", uaaUaaClientDetails.getResourceIds().iterator().next());
+        assertEquals(1, uaaUaaClientDetails.getAuthorizedGrantTypes().size());
+        assertEquals("myAuthorizedGrantType", uaaUaaClientDetails.getAuthorizedGrantTypes().iterator().next());
+        assertEquals("myRedirectUri", uaaUaaClientDetails.getRegisteredRedirectUri() .iterator().next());
+        assertEquals(1, uaaUaaClientDetails.getAuthorities().size());
+        assertEquals("myAuthority", uaaUaaClientDetails.getAuthorities().iterator() .next().getAuthority());
+        assertEquals(new Integer(100), uaaUaaClientDetails.getAccessTokenValiditySeconds());
+        assertEquals(new Integer(200), uaaUaaClientDetails.getRefreshTokenValiditySeconds());
     }
 
     @Test
@@ -336,6 +335,7 @@ class MultitenantJdbcClientDetailsServiceTests {
             jdbcTemplate.update(INSERT_SQL,
                     clientId,
                     "mySecret",
+                    "myClientJwtConfig",
                     "myResource",
                     "myScope",
                     "myAuthorizedGrantType",
@@ -387,6 +387,7 @@ class MultitenantJdbcClientDetailsServiceTests {
         jdbcTemplate.update(INSERT_SQL,
                 "clientIdWithMultipleDetails",
                 "mySecret",
+                "myClientJwtConfig",
                 "myResource1,myResource2",
                 "myScope1,myScope2",
                 "myAuthorizedGrantType1,myAuthorizedGrantType2",
@@ -446,7 +447,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void addClientWithNoDetails() {
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("addedClientIdWithNoDetails");
 
         service.addClientDetails(clientDetails);
@@ -462,18 +463,18 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void addClientWithSalt() {
         String id = "addedClientIdWithSalt";
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId(id);
         clientDetails.setClientSecret("secret");
         clientDetails.addAdditionalInformation(ClientConstants.TOKEN_SALT, "salt");
         service.addClientDetails(clientDetails);
-        clientDetails = (BaseClientDetails) service.loadClientByClientId(id);
+        clientDetails = (UaaClientDetails) service.loadClientByClientId(id);
         assertNotNull(clientDetails);
         assertEquals("salt", clientDetails.getAdditionalInformation().get(ClientConstants.TOKEN_SALT));
 
         clientDetails.addAdditionalInformation(ClientConstants.TOKEN_SALT, "newsalt");
         service.updateClientDetails(clientDetails);
-        clientDetails = (BaseClientDetails) service.loadClientByClientId(id);
+        clientDetails = (UaaClientDetails) service.loadClientByClientId(id);
         assertNotNull(clientDetails);
         assertEquals("newsalt", clientDetails.getAdditionalInformation().get(ClientConstants.TOKEN_SALT));
     }
@@ -481,7 +482,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void insertDuplicateClient() {
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("duplicateClientIdWithNoDetails");
 
         service.addClientDetails(clientDetails);
@@ -492,7 +493,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void updateClientSecret() {
         final String newClientSecret = "newClientSecret-" + randomValueStringGenerator.generate();
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("newClientIdWithNoDetails");
         service.addClientDetails(clientDetails);
         service.updateClientSecret(clientDetails.getClientId(), newClientSecret);
@@ -508,7 +509,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void deleteClientSecret() {
         String clientId = "client_id_test_delete";
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId(clientId);
         clientDetails.setClientSecret(SECRET);
         service.addClientDetails(clientDetails);
@@ -528,6 +529,39 @@ class MultitenantJdbcClientDetailsServiceTests {
     }
 
     @Test
+    void updateClientJwt() {
+        UaaClientDetails clientDetails = new UaaClientDetails();
+        clientDetails.setClientId("newClientIdWithNoDetails");
+        service.addClientDetails(clientDetails);
+        service.addClientJwtConfig(clientDetails.getClientId(), "http://localhost:8080/uaa/token_keys", currentZoneId, true);
+
+        Map<String, Object> map = jdbcTemplate.queryForMap(SELECT_SQL,
+            "newClientIdWithNoDetails");
+
+        assertEquals("newClientIdWithNoDetails", map.get("client_id"));
+        assertTrue(map.containsKey("client_jwt_config"));
+        assertEquals("{\"jwks_uri\":\"http://localhost:8080/uaa/token_keys\"}", (String) map.get("client_jwt_config"));
+    }
+
+    @Test
+    void deleteClientJwt() {
+        String clientId = "client_id_test_delete";
+        UaaClientDetails clientDetails = new UaaClientDetails();
+        clientDetails.setClientId(clientId);
+        service.addClientDetails(clientDetails);
+        service.addClientJwtConfig(clientDetails.getClientId(), "http://localhost:8080/uaa/token_keys", currentZoneId, true);
+
+        Map<String, Object> map = jdbcTemplate.queryForMap(SELECT_SQL, clientId);
+        assertTrue(map.containsKey("client_jwt_config"));
+        assertEquals("{\"jwks_uri\":\"http://localhost:8080/uaa/token_keys\"}", (String) map.get("client_jwt_config"));
+        service.deleteClientJwtConfig(clientId, "http://localhost:8080/uaa/token_keys", currentZoneId);
+
+        map = jdbcTemplate.queryForMap(SELECT_SQL, clientId);
+        assertNull(map.get("client_jwt_config"));
+        assertFalse(map.containsValue("client_jwt_config"));
+    }
+
+    @Test
     void deleteClientSecretForInvalidClient() {
         assertThrowsWithMessageThat(NoSuchClientException.class,
                 () -> service.deleteClientSecret("invalid_client_id", currentZoneId),
@@ -535,9 +569,30 @@ class MultitenantJdbcClientDetailsServiceTests {
     }
 
     @Test
+    void updateClientJwtConfig() {
+        UaaClientDetails clientDetails = new UaaClientDetails();
+        clientDetails.setClientId("newClientIdWithClientJwtConfig");
+        clientDetails.setClientJwtConfig("small");
+        service.addClientDetails(clientDetails, mockIdentityZoneManager.getCurrentIdentityZoneId());
+
+        Map<String, Object> map = jdbcTemplate.queryForMap(SELECT_SQL,
+            "newClientIdWithClientJwtConfig");
+        assertEquals("small", (String) map.get("client_jwt_config"));
+
+        service.updateClientJwtConfig(clientDetails.getClientId(), "any json web key config", mockIdentityZoneManager.getCurrentIdentityZoneId());
+
+        map = jdbcTemplate.queryForMap(SELECT_SQL,
+            "newClientIdWithClientJwtConfig");
+
+        assertEquals("newClientIdWithClientJwtConfig", map.get("client_id"));
+        assertTrue(map.containsKey("client_jwt_config"));
+        assertEquals("any json web key config", (String) map.get("client_jwt_config"));
+    }
+
+    @Test
     void updateClientRedirectURI() {
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("newClientIdWithNoDetails");
 
         service.addClientDetails(clientDetails);
@@ -561,7 +616,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void updateNonExistentClient() {
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("nosuchClientIdWithNoDetails");
 
         assertThrows(NoSuchClientException.class,
@@ -571,7 +626,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void removeClient() {
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("deletedClientIdWithNoDetails");
 
         service.addClientDetails(clientDetails);
@@ -587,7 +642,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void removeNonExistentClient() {
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("nosuchClientIdWithNoDetails");
 
         assertThrows(NoSuchClientException.class,
@@ -597,7 +652,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void findClients() {
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("aclient");
 
         service.addClientDetails(clientDetails);
@@ -610,7 +665,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     void loadingClientInOtherZoneFromOtherZone() {
         when(mockIdentityZoneManager.getCurrentIdentityZoneId()).thenReturn("other-zone");
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("clientInOtherZone");
         service.addClientDetails(clientDetails);
         assertNotNull(service.loadClientByClientId("clientInOtherZone"));
@@ -619,7 +674,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void loadingClientInOtherZoneFromDefaultZoneFails() {
         when(mockIdentityZoneManager.getCurrentIdentityZoneId()).thenReturn("other-zone");
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("clientInOtherZone");
         service.addClientDetails(clientDetails);
         when(mockIdentityZoneManager.getCurrentIdentityZoneId()).thenReturn(IdentityZone.getUaaZoneId());
@@ -630,7 +685,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void addingClientToOtherIdentityZoneShouldHaveOtherIdentityZoneId() {
         when(mockIdentityZoneManager.getCurrentIdentityZoneId()).thenReturn("other-zone");
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         String clientId = "clientInOtherZone";
         clientDetails.setClientId(clientId);
         service.addClientDetails(clientDetails);
@@ -641,7 +696,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     @Test
     void addingClientToDefaultZoneShouldHaveDefaultZoneId() {
         when(mockIdentityZoneManager.getCurrentIdentityZoneId()).thenReturn(IdentityZone.getUaaZoneId());
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         String clientId = "clientInDefaultZone";
         clientDetails.setClientId(clientId);
         service.addClientDetails(clientDetails);
@@ -654,7 +709,7 @@ class MultitenantJdbcClientDetailsServiceTests {
         String userId = "4097895b-ebc1-4732-b6e5-2c33dd2c7cd1";
         Authentication oldAuth = authenticateAsUserAndReturnOldAuth(userId);
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         String clientId = "clientInDefaultZone";
         clientDetails.setClientId(clientId);
         service.addClientDetails(clientDetails);
@@ -670,13 +725,13 @@ class MultitenantJdbcClientDetailsServiceTests {
         String userId = "4097895b-ebc1-4732-b6e5-2c33dd2c7cd1";
         Authentication oldAuth = authenticateAsUserAndReturnOldAuth(userId);
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId("client1");
         service.addClientDetails(clientDetails);
 
         authenticateAsClient(currentZoneId);
 
-        clientDetails = new BaseClientDetails();
+        clientDetails = new UaaClientDetails();
         String clientId = "client2";
         clientDetails.setClientId(clientId);
         service.addClientDetails(clientDetails);
@@ -692,14 +747,14 @@ class MultitenantJdbcClientDetailsServiceTests {
         String client1 = "client1";
         String client2 = "client2";
 
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId(client1);
         service.addClientDetails(clientDetails);
         assertNull(service.getCreatedByForClientAndZone(client1, currentZoneId));
 
         authenticateAsClient(currentZoneId);
 
-        clientDetails = new BaseClientDetails();
+        clientDetails = new UaaClientDetails();
         clientDetails.setClientId(client2);
         service.addClientDetails(clientDetails);
 
@@ -726,7 +781,7 @@ class MultitenantJdbcClientDetailsServiceTests {
     }
 
     private static ClientDetails addClientToDb(String clientId, MultitenantJdbcClientDetailsService service) {
-        BaseClientDetails clientDetails = new BaseClientDetails();
+        UaaClientDetails clientDetails = new UaaClientDetails();
         clientDetails.setClientId(clientId);
         clientDetails.setClientSecret("secret");
         service.addClientDetails(clientDetails);

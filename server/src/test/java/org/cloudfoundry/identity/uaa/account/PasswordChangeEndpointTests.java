@@ -9,6 +9,9 @@ import org.cloudfoundry.identity.uaa.scim.exception.ScimException;
 import org.cloudfoundry.identity.uaa.scim.jdbc.JdbcScimUserProvisioning;
 import org.cloudfoundry.identity.uaa.scim.validate.PasswordValidator;
 import org.cloudfoundry.identity.uaa.security.beans.SecurityContextAccessor;
+import org.cloudfoundry.identity.uaa.zone.IdentityZone;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneConfiguration;
+import org.cloudfoundry.identity.uaa.zone.JdbcIdentityZoneProvisioning;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,16 +45,20 @@ class PasswordChangeEndpointTests {
 
     @BeforeEach
     void setup(@Autowired JdbcTemplate jdbcTemplate) {
+        mockIdentityZoneManager = mock(IdentityZoneManager.class);
         jdbcScimUserProvisioning = new JdbcScimUserProvisioning(
                 jdbcTemplate,
                 new JdbcPagingListFactory(jdbcTemplate, LimitSqlAdapterFactory.getLimitSqlAdapter()),
-                passwordEncoder);
+                passwordEncoder, mockIdentityZoneManager, new JdbcIdentityZoneProvisioning(jdbcTemplate));
 
         final RandomValueStringGenerator generator = new RandomValueStringGenerator();
 
         final String currentIdentityZoneId = "currentIdentityZoneId-" + generator.generate();
-        mockIdentityZoneManager = mock(IdentityZoneManager.class);
+        IdentityZone currentIdentityZone = new IdentityZone();
+        currentIdentityZone.setId(currentIdentityZoneId);
+        currentIdentityZone.setConfig(new IdentityZoneConfiguration());
         when(mockIdentityZoneManager.getCurrentIdentityZoneId()).thenReturn(currentIdentityZoneId);
+        when(mockIdentityZoneManager.getCurrentIdentityZone()).thenReturn(currentIdentityZone);
 
         mockPasswordValidator = mock(PasswordValidator.class);
         mockSecurityContextAccessor = mock(SecurityContextAccessor.class);

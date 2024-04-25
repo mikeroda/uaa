@@ -1,6 +1,7 @@
 package org.cloudfoundry.identity.uaa.mock.clients;
 
-import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.login.util.RandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
@@ -14,7 +15,6 @@ import org.springframework.restdocs.payload.FieldDescriptor;
 import org.springframework.restdocs.snippet.Snippet;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.provider.ClientDetails;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.*;
@@ -77,6 +77,13 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
         fieldWithPath("changeMode").optional(UPDATE).type(STRING).description("If change mode is set to `"+ADD+"`, the new `secret` will be added to the existing one and if the change mode is set to `"+DELETE+"`, the old secret will be deleted to support secret rotation. Currently only two client secrets are supported at any given time.")
     };
 
+    private static final FieldDescriptor[] clientJwtChangeFields = new FieldDescriptor[]{
+        fieldWithPath("client_id").required().description(clientIdDescription),
+        fieldWithPath("kid").optional(UPDATE).type(STRING).description("If change mode is set to `"+DELETE+"`, the `id of the key` that will be deleted. The kid parameter is only possible if jwks configuration is used."),
+        fieldWithPath("jwks").constrained("Optional if jwks_uri is used. Required otherwise.").type(STRING).description("A valid JSON string according JSON Web Key Set standard, see [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517), e.g. content of /token_keys endpoint from UAA"),
+        fieldWithPath("jwks_uri").constrained("Optional if jwks is used. Required otherwise.").type(STRING).description("A valid URI to token keys endpoint. Must be compliant to jwks_uri from [OpenID Discovery](https://openid.net/specs/openid-connect-discovery-1_0.html).")
+    };
+
     @BeforeEach
     void setup() throws Exception {
         clientAdminToken = testClient.getClientCredentialsOAuthAccessToken(
@@ -116,7 +123,7 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
 
     @Test
     void listClients() throws Exception {
-        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), BaseClientDetails.class);
+        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
 
         ResultActions resultActions = mockMvc.perform(get("/oauth/clients")
             .header("Authorization", "Bearer " + clientAdminToken)
@@ -161,7 +168,7 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
 
     @Test
     void retrieveClient() throws Exception {
-        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), BaseClientDetails.class);
+        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
 
         ResultActions resultActions = mockMvc.perform(get("/oauth/clients/{client_id}", createdClientDetails.getClientId())
                 .header("Authorization", "Bearer " + clientAdminToken)
@@ -189,8 +196,8 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
 
     @Test
     void updateClient() throws Exception {
-        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), BaseClientDetails.class);
-        BaseClientDetails updatedClientDetails = new BaseClientDetails();
+        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
+        UaaClientDetails updatedClientDetails = new UaaClientDetails();
         updatedClientDetails.setClientId(createdClientDetails.getClientId());
         updatedClientDetails.setScope(Arrays.asList("clients.new", "clients.autoapprove"));
         updatedClientDetails.setAutoApproveScopes(Collections.singletonList("clients.autoapprove"));
@@ -229,7 +236,7 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
 
     @Test
     void changeClientSecret() throws Exception {
-        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), BaseClientDetails.class);
+        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
 
         ResultActions resultActions = mockMvc.perform(put("/oauth/clients/{client_id}/secret", createdClientDetails.getClientId())
             .header("Authorization", "Bearer " + clientAdminToken)
@@ -256,8 +263,36 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
     }
 
     @Test
+    void changeClientJwt() throws Exception {
+        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
+
+        ResultActions resultActions = mockMvc.perform(put("/oauth/clients/{client_id}/clientjwt", createdClientDetails.getClientId())
+                .header("Authorization", "Bearer " + clientAdminToken)
+                .contentType(APPLICATION_JSON)
+                .accept(APPLICATION_JSON)
+                .content(writeValueAsString(map(
+                    entry("client_id", createdClientDetails.getClientId()),
+                    entry("jwks_uri", "http://localhost:8080/uaa/token_keys")
+                ))))
+            .andExpect(status().isOk());
+
+        resultActions.andDo(document("{ClassName}/{methodName}", preprocessRequest(prettyPrint()), preprocessResponse(prettyPrint()),
+                pathParameters(
+                    parameterWithName("client_id").required().description(clientIdDescription)
+                ),
+                requestHeaders(
+                    headerWithName("Authorization").description("Bearer token containing `clients.trust`, `clients.admin` or `zones.{zone.id}.admin`"),
+                    IDENTITY_ZONE_ID_HEADER,
+                    IDENTITY_ZONE_SUBDOMAIN_HEADER
+                ),
+                requestFields(clientJwtChangeFields)
+            )
+        );
+    }
+
+    @Test
     void deleteClient() throws Exception {
-        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), BaseClientDetails.class);
+        ClientDetails createdClientDetails = JsonUtils.readValue(createClientHelper().andReturn().getResponse().getContentAsString(), UaaClientDetails.class);
 
         ResultActions resultActions = mockMvc.perform(delete("/oauth/clients/{client_id}", createdClientDetails.getClientId())
             .header("Authorization", "Bearer " + clientAdminToken)
@@ -285,8 +320,8 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
         // CREATE
 
         List<String> scopes = Arrays.asList("clients.read", "clients.write");
-        BaseClientDetails createdClientDetails1 = createBasicClientWithAdditionalInformation(scopes);
-        BaseClientDetails createdClientDetails2 = createBasicClientWithAdditionalInformation(scopes);
+        UaaClientDetails createdClientDetails1 = createBasicClientWithAdditionalInformation(scopes);
+        UaaClientDetails createdClientDetails2 = createBasicClientWithAdditionalInformation(scopes);
 
         ResultActions createResultActions = mockMvc.perform(post("/oauth/clients/tx")
             .contentType(APPLICATION_JSON)
@@ -400,7 +435,7 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
             entry("client_id", createdClientDetails2.getClientId())
         );
 
-        BaseClientDetails createdClientDetails3 = createBasicClientWithAdditionalInformation(scopes);
+        UaaClientDetails createdClientDetails3 = createBasicClientWithAdditionalInformation(scopes);
         ClientDetailsModification modify3 = new ClientDetailsModification(createdClientDetails3);
         modify3.setAction(ClientDetailsModification.ADD);
 
@@ -445,8 +480,8 @@ class ClientAdminEndpointDocs extends AdminClientCreator {
             );
     }
 
-    private BaseClientDetails createBasicClientWithAdditionalInformation(List<String> scopes) {
-        BaseClientDetails clientDetails = createBaseClient(null, SECRET, null, scopes, scopes);
+    private UaaClientDetails createBasicClientWithAdditionalInformation(List<String> scopes) {
+        UaaClientDetails clientDetails = createBaseClient(null, SECRET, null, scopes, scopes);
         clientDetails.setAdditionalInformation(additionalInfo());
         return clientDetails;
     }

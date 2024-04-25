@@ -1,8 +1,10 @@
 package org.cloudfoundry.identity.uaa.oauth.event;
 
 import org.aspectj.lang.ProceedingJoinPoint;
+import org.cloudfoundry.identity.uaa.audit.AuditEventType;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthenticationTestFactory;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.client.event.*;
 import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
@@ -15,10 +17,10 @@ import org.springframework.security.oauth2.common.exceptions.InvalidClientExcept
 import org.springframework.security.oauth2.provider.AuthorizationRequest;
 import org.springframework.security.oauth2.provider.OAuth2Authentication;
 import org.springframework.security.oauth2.provider.OAuth2Request;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
 
 import java.util.Collections;
 
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.*;
 
 class ClientAdminEventPublisherTests {
@@ -47,21 +49,21 @@ class ClientAdminEventPublisherTests {
 
     @Test
     void create() {
-        BaseClientDetails client = new BaseClientDetails("foo", null, null, "client_credentials", "none");
+        UaaClientDetails client = new UaaClientDetails("foo", null, null, "client_credentials", "none");
         subject.create(client);
         verify(mockApplicationEventPublisher).publishEvent(isA(ClientCreateEvent.class));
     }
 
     @Test
     void update() {
-        BaseClientDetails client = new BaseClientDetails("foo", null, null, "client_credentials", "none");
+        UaaClientDetails client = new UaaClientDetails("foo", null, null, "client_credentials", "none");
         subject.update(client);
         verify(mockApplicationEventPublisher).publishEvent(isA(ClientUpdateEvent.class));
     }
 
     @Test
     void delete() throws Throwable {
-        BaseClientDetails client = new BaseClientDetails("foo", null, null, "client_credentials", "none");
+        UaaClientDetails client = new UaaClientDetails("foo", null, null, "client_credentials", "none");
         ProceedingJoinPoint jp = mock(ProceedingJoinPoint.class);
         when(jp.proceed()).thenReturn(client);
         subject.delete(jp, "foo");
@@ -71,7 +73,7 @@ class ClientAdminEventPublisherTests {
     @Test
     void secretChange() {
         when(mockMultitenantClientServices.loadClientByClientId("foo")).thenReturn(
-                new BaseClientDetails("foo", null, null, "client_credentials", "none"));
+                new UaaClientDetails("foo", null, null, "client_credentials", "none"));
         subject.secretChange("foo");
         verify(mockApplicationEventPublisher).publishEvent(isA(SecretChangeEvent.class));
     }
@@ -79,7 +81,7 @@ class ClientAdminEventPublisherTests {
     @Test
     void secretFailure() {
         when(mockMultitenantClientServices.loadClientByClientId("foo")).thenReturn(
-                new BaseClientDetails("foo", null, null, "client_credentials", "none"));
+                new UaaClientDetails("foo", null, null, "client_credentials", "none"));
         subject.secretFailure("foo", new RuntimeException("planned"));
         verify(mockApplicationEventPublisher).publishEvent(isA(SecretFailureEvent.class));
     }
@@ -90,5 +92,23 @@ class ClientAdminEventPublisherTests {
                 new InvalidClientException("Not found"));
         subject.secretFailure("foo", new RuntimeException("planned"));
         verify(mockApplicationEventPublisher).publishEvent(isA(SecretFailureEvent.class));
+    }
+
+    @Test
+    void clientJwtChange() {
+        UaaClientDetails uaaUaaClientDetails = new UaaClientDetails("foo", null, null, "client_credentials", "none", null);
+        when(mockMultitenantClientServices.loadClientByClientId("foo")).thenReturn(uaaUaaClientDetails);
+        subject.clientJwtChange("foo");
+        verify(mockApplicationEventPublisher).publishEvent(isA(ClientJwtChangeEvent.class));
+        assertEquals(AuditEventType.ClientJwtChangeSuccess, new ClientJwtChangeEvent(uaaUaaClientDetails, SecurityContextHolder.getContext().getAuthentication(), "uaa").getAuditEvent().getType());
+    }
+
+    @Test
+    void clientJwtFailure() {
+        UaaClientDetails uaaUaaClientDetails = new UaaClientDetails("foo", null, null, "client_credentials", "none", null);
+        when(mockMultitenantClientServices.loadClientByClientId("foo")).thenReturn(uaaUaaClientDetails);
+        subject.clientJwtFailure("foo", new RuntimeException("planned"));
+        verify(mockApplicationEventPublisher).publishEvent(isA(ClientJwtFailureEvent.class));
+        assertEquals(AuditEventType.ClientJwtChangeFailure, new ClientJwtFailureEvent("", uaaUaaClientDetails, SecurityContextHolder.getContext().getAuthentication(), "uaa").getAuditEvent().getType());
     }
 }

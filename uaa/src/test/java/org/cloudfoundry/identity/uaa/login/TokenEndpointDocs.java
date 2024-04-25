@@ -1,29 +1,9 @@
 package org.cloudfoundry.identity.uaa.login;
 
-import org.apache.commons.codec.binary.Base64;
-import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
-import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
-import org.cloudfoundry.identity.uaa.login.util.RandomValueStringGenerator;
-import org.cloudfoundry.identity.uaa.mock.token.AbstractTokenMockMvcTests;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
-import org.cloudfoundry.identity.uaa.oauth.pkce.PkceValidationService;
-import org.cloudfoundry.identity.uaa.oauth.token.CompositeToken;
-import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
-import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
-import org.cloudfoundry.identity.uaa.provider.SamlIdentityProviderDefinition;
-import org.cloudfoundry.identity.uaa.provider.saml.idp.SamlTestUtils;
-import org.cloudfoundry.identity.uaa.scim.ScimUser;
-import org.cloudfoundry.identity.uaa.test.JUnitRestDocumentationExtension;
-import org.cloudfoundry.identity.uaa.test.SnippetUtils;
-import org.cloudfoundry.identity.uaa.test.UaaTestAccounts;
-import org.cloudfoundry.identity.uaa.test.TestClient;
-import org.cloudfoundry.identity.uaa.user.UaaAuthority;
-import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
-import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+import java.net.URI;
+import java.util.Collections;
+
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -36,7 +16,6 @@ import org.springframework.restdocs.payload.FieldDescriptor;
 import org.springframework.restdocs.request.ParameterDescriptor;
 import org.springframework.restdocs.snippet.Snippet;
 import org.springframework.security.oauth2.common.OAuth2RefreshToken;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.web.servlet.MvcResult;
@@ -46,12 +25,35 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URI;
-import java.util.Collections;
+import org.apache.commons.codec.binary.Base64;
+import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
+import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
+import org.cloudfoundry.identity.uaa.login.util.RandomValueStringGenerator;
+import org.cloudfoundry.identity.uaa.mock.token.AbstractTokenMockMvcTests;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
+import org.cloudfoundry.identity.uaa.oauth.jwt.JwtClientAuthentication;
+import org.cloudfoundry.identity.uaa.oauth.pkce.PkceValidationService;
+import org.cloudfoundry.identity.uaa.oauth.token.CompositeToken;
+import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
+import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
+import org.cloudfoundry.identity.uaa.provider.SamlIdentityProviderDefinition;
+import org.cloudfoundry.identity.uaa.provider.saml.idp.SamlTestUtils;
+import org.cloudfoundry.identity.uaa.scim.ScimUser;
+import org.cloudfoundry.identity.uaa.test.JUnitRestDocumentationExtension;
+import org.cloudfoundry.identity.uaa.test.SnippetUtils;
+import org.cloudfoundry.identity.uaa.test.TestClient;
+import org.cloudfoundry.identity.uaa.test.UaaTestAccounts;
+import org.cloudfoundry.identity.uaa.user.UaaAuthority;
+import org.cloudfoundry.identity.uaa.util.JsonUtils;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.opensaml.saml2.core.NameID;
 
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.MockSecurityContext;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.getClientCredentialsOAuthAccessToken;
-import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.getMfaCodeFromCredentials;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.getUserOAuthAccessToken;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_AUTHORIZATION_CODE;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_CLIENT_CREDENTIALS;
@@ -100,9 +102,9 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     private final ParameterDescriptor grantTypeParameter = parameterWithName(GRANT_TYPE).required().type(STRING).description("OAuth 2 grant type");
 
-    private final ParameterDescriptor clientIdParameter = parameterWithName(CLIENT_ID).optional(null).type(STRING).description("A unique string representing the registration information provided by the client, the recipient of the token. Optional if it is passed as part of the Basic Authorization header.");
-    private final ParameterDescriptor clientSecretParameter = parameterWithName("client_secret").optional(null).type(STRING).description("The secret passphrase configured for the OAuth client. Optional if it is passed as part of the Basic Authorization header.");
-    private final ParameterDescriptor opaqueFormatParameter = parameterWithName(REQUEST_TOKEN_FORMAT).optional(null).type(STRING).description("Can be set to `" + OPAQUE.getStringValue() + "` to retrieve an opaque and revocable token or to `" + JWT.getStringValue() + "` to retrieve a JWT token. If not set the zone setting config.tokenPolicy.jwtRevocable is used.");
+    private final ParameterDescriptor clientIdParameter = parameterWithName(CLIENT_ID).optional(null).type(STRING).description("A unique string representing the registration information provided by the client, the recipient of the token. Optional if it is passed as part of the Basic Authorization header or as part of the client_assertion.");
+    private final ParameterDescriptor clientSecretParameter = parameterWithName("client_secret").optional(null).type(STRING).description("The [secret passphrase configured](#change-secret) for the OAuth client. Optional if it is passed as part of the Basic Authorization header or if client_assertion is sent as part of private_key_jwt authentication.");
+    private final ParameterDescriptor opaqueFormatParameter = parameterWithName(REQUEST_TOKEN_FORMAT).optional("jwt").type(STRING).description("Can be set to `" + OPAQUE.getStringValue() + "` to retrieve an opaque token or to `" + JWT.getStringValue() + "` to retrieve a JWT token. Please refer to the Revoke Tokens endpoint doc for information about the revocability of opaque vs. jwt tokens.");
     private final ParameterDescriptor scopeParameter = parameterWithName(SCOPE).optional(null).type(STRING).description("The list of scopes requested for the token. Use when you wish to reduce the number of scopes the token will have.");
     private final ParameterDescriptor loginHintParameter = parameterWithName("login_hint").optional(null).type(STRING).description("<small><mark>UAA 75.5.0</mark></small> Indicates the identity provider to be used. The passed string has to be a URL-Encoded JSON Object, containing the field `origin` with value as `origin_key` of an identity provider. Note that this identity provider must support the grant type `password`.");
     private final ParameterDescriptor codeVerifier = parameterWithName(PkceValidationService.CODE_VERIFIER).description("<small><mark>UAA 75.5.0</mark></small> [PKCE](https://tools.ietf.org/html/rfc7636) Code Verifier. A `code_verifier` parameter must be provided if a `code_challenge` parameter was present in the previous call to `/oauth/authorize`. The `code_verifier` must match the used `code_challenge` (according to the selected `code_challenge_method`)").attributes(key("constraints").value("Optional"), key("type").value(STRING));
@@ -115,6 +117,10 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
     private final FieldDescriptor expiresInFieldDescriptor = fieldWithPath("expires_in").description("The number of seconds until the access token expires.");
     private final FieldDescriptor jtiFieldDescriptor = fieldWithPath("jti").description("A globally unique identifier for this access token. This identifier is used when [revoking tokens](#revoke-tokens).");
     private final FieldDescriptor tokenTypeFieldDescriptor = fieldWithPath("token_type").description("The type of the access token issued. This field is mandated in [RFC 6749](https://tools.ietf.org/html/rfc6749#section-7.1). In the UAA, the only supported `token_type` is `bearer`.");
+
+    private final ParameterDescriptor clientAssertionType = parameterWithName(JwtClientAuthentication.CLIENT_ASSERTION_TYPE).optional(null).description("<small><mark>UAA 76.23.0</mark></small> [RFC 7523](https://tools.ietf.org/html/rfc7523) describes the type. Must be set to `urn:ietf:params:oauth:client-assertion-type:jwt-bearer` if `client_assertion` parameter is present.").attributes(key("constraints").value("Optional"), key("type").value(STRING));
+
+    private final ParameterDescriptor clientAssertion = parameterWithName(JwtClientAuthentication.CLIENT_ASSERTION).optional(null).description("<small><mark>UAA 76.23.0</mark></small> Client authentication using method [private_key_jwt](https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication). Optional as replacement of methods client_secret_basic or client_secret_post using secrets. The client needs to have a valid [JWT confiuration](#change-client-jwt) for trust to JWT in client_assertion.").attributes(key("constraints").value("Optional"), key("type").value(STRING));
 
     private final String codeDescription = "the authorization code, obtained from `/oauth/authorize`, issued for the user";
 
@@ -201,6 +207,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param(CLIENT_ID, "login")
                 .param("client_secret", "loginsecret")
+                .param("client_assertion", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IjU4ZDU1YzUwMGNjNmI1ODM3OTYxN2UwNmU3ZGVjNmNhIn0.eyJzdWIiOiJsb2dpbiIsImlzcyI6ImxvZ2luIiwianRpIjoiNThkNTVjNTAwY2M2YjU4Mzc5NjE3ZTA2ZTdhZmZlZSIsImV4cCI6MTIzNDU2NzgsImF1ZCI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MC91YWEvb2F1dGgvdG9rZW4ifQ.jwWw0OKZecd4ZjtwQ_ievqBVrh2SieqMF6vY74Oo5H6v-Ibcmumq96NLNtoUEwaAEQQOHb8MWcC8Gwi9dVQdCrtpomC86b_LKkihRBSKuqpw0udL9RMH5kgtC04ctsN0yZNifUWMP85VHn97Ual5eZ2miaBFob3H5jUe98CcBj1TSRehr64qBFYuwt9vD19q6U-ONhRt0RXBPB7ayHAOMYtb1LFIzGAiKvqWEy9f-TBPXSsETjKkAtSuM-WVWi4EhACMtSvI6iJN15f7qlverRSkGIdh1j2vPXpKKBJoRhoLw6YqbgcUC9vAr17wfa_POxaRHvh9JPty0ZXLA4XPtA")
+                .param("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
                 .param(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE)
                 .param("code", code)
                 .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
@@ -212,7 +220,9 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 parameterWithName(REDIRECT_URI).description("redirection URI to which the authorization server will send the user-agent back once access is granted (or denied)").attributes(SnippetUtils.constraints.value("Required if provided on authorization request"), SnippetUtils.type.value(STRING)),
                 parameterWithName("code").description(codeDescription).attributes(SnippetUtils.constraints.value("Required"), SnippetUtils.type.value(STRING)),
                 grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `authorization_code`"),
-                clientSecretParameter.description("<small><mark>UAA 75.21.0</mark></small> Optional and can be omitted if client has configured allowpublic and [PKCE](https://tools.ietf.org/html/rfc7636) with `code_challange_method=S256` is used to create to `code`."),
+                clientSecretParameter.description("<small><mark>UAA 75.21.0</mark></small> Optional and can be omitted if client has configured allowpublic and [PKCE](https://tools.ietf.org/html/rfc7636) with `code_challenge_method=S256` is used to create to `code`."),
+                clientAssertion,
+                clientAssertionType,
                 codeVerifier,
                 opaqueFormatParameter
         );
@@ -240,6 +250,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param(CLIENT_ID, "login")
                 .param("client_secret", "loginsecret")
+                .param("client_assertion", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IjU4ZDU1YzUwMGNjNmI1ODM3OTYxN2UwNmU3ZGVjNmNhIn0.eyJzdWIiOiJsb2dpbiIsImlzcyI6ImxvZ2luIiwianRpIjoiNThkNTVjNTAwY2M2YjU4Mzc5NjE3ZTA2ZTdhZmZlZSIsImV4cCI6MTIzNDU2NzgsImF1ZCI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MC91YWEvb2F1dGgvdG9rZW4ifQ.jwWw0OKZecd4ZjtwQ_ievqBVrh2SieqMF6vY74Oo5H6v-Ibcmumq96NLNtoUEwaAEQQOHb8MWcC8Gwi9dVQdCrtpomC86b_LKkihRBSKuqpw0udL9RMH5kgtC04ctsN0yZNifUWMP85VHn97Ual5eZ2miaBFob3H5jUe98CcBj1TSRehr64qBFYuwt9vD19q6U-ONhRt0RXBPB7ayHAOMYtb1LFIzGAiKvqWEy9f-TBPXSsETjKkAtSuM-WVWi4EhACMtSvI6iJN15f7qlverRSkGIdh1j2vPXpKKBJoRhoLw6YqbgcUC9vAr17wfa_POxaRHvh9JPty0ZXLA4XPtA")
+                .param("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
                 .param(SCOPE, "scim.write")
                 .param(GRANT_TYPE, GRANT_TYPE_CLIENT_CREDENTIALS)
                 .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue());
@@ -248,6 +260,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 clientIdParameter,
                 grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `client_credentials`"),
                 clientSecretParameter,
+                clientAssertion,
+                clientAssertionType,
                 scopeParameter,
                 opaqueFormatParameter
         );
@@ -303,6 +317,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param(CLIENT_ID, "app")
                 .param("client_secret", "appclientsecret")
+                .param("client_assertion", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IjU4ZDU1YzUwMGNjNmI1ODM3OTYxN2UwNmU3ZGVjNmNhIn0.eyJzdWIiOiJsb2dpbiIsImlzcyI6ImxvZ2luIiwianRpIjoiNThkNTVjNTAwY2M2YjU4Mzc5NjE3ZTA2ZTdhZmZlZSIsImV4cCI6MTIzNDU2NzgsImF1ZCI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MC91YWEvb2F1dGgvdG9rZW4ifQ.jwWw0OKZecd4ZjtwQ_ievqBVrh2SieqMF6vY74Oo5H6v-Ibcmumq96NLNtoUEwaAEQQOHb8MWcC8Gwi9dVQdCrtpomC86b_LKkihRBSKuqpw0udL9RMH5kgtC04ctsN0yZNifUWMP85VHn97Ual5eZ2miaBFob3H5jUe98CcBj1TSRehr64qBFYuwt9vD19q6U-ONhRt0RXBPB7ayHAOMYtb1LFIzGAiKvqWEy9f-TBPXSsETjKkAtSuM-WVWi4EhACMtSvI6iJN15f7qlverRSkGIdh1j2vPXpKKBJoRhoLw6YqbgcUC9vAr17wfa_POxaRHvh9JPty0ZXLA4XPtA")
+                .param("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
                 .param(GRANT_TYPE, GRANT_TYPE_PASSWORD)
                 .param("username", user.getUserName())
                 .param("password", user.getPassword())
@@ -313,50 +329,10 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 clientIdParameter,
                 grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `password`"),
                 clientSecretParameter,
+                clientAssertion,
+                clientAssertionType,
                 parameterWithName("username").required().type(STRING).description("the username for the user trying to get a token"),
                 parameterWithName("password").required().type(STRING).description("the password for the user trying to get a token"),
-                opaqueFormatParameter,
-                loginHintParameter
-        );
-
-        Snippet responseFields = responseFields(
-                accessTokenFieldDescriptor,
-                idTokenFieldDescriptor,
-                tokenTypeFieldDescriptor,
-                expiresInFieldDescriptor,
-                scopeFieldDescriptorWhenUserToken,
-                refreshTokenFieldDescriptor,
-                jtiFieldDescriptor
-        );
-
-        mockMvc.perform(postForToken)
-                .andDo(document("{ClassName}/{methodName}", preprocessResponse(prettyPrint()), requestParameters, responseFields));
-    }
-
-    @Test
-    void getTokenUsingMfaPasswordGrant() throws Exception {
-
-        setupForMfaPasswordGrant(user.getId());
-
-        MockHttpServletRequestBuilder postForToken = post("/oauth/token")
-                .accept(APPLICATION_JSON)
-                .contentType(APPLICATION_FORM_URLENCODED)
-                .param(CLIENT_ID, "app")
-                .param("client_secret", "appclientsecret")
-                .param(GRANT_TYPE, GRANT_TYPE_PASSWORD)
-                .param("username", user.getUserName())
-                .param("password", user.getPassword())
-                .param("mfaCode", String.valueOf(getMfaCodeFromCredentials(credentials)))
-                .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
-                .param("login_hint", "{\"origin\":\"uaa\"}");
-
-        Snippet requestParameters = requestParameters(
-                clientIdParameter,
-                grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `password`"),
-                clientSecretParameter,
-                parameterWithName("username").required().type(STRING).description("the username for the user trying to get a token"),
-                parameterWithName("password").required().type(STRING).description("the password for the user trying to get a token"),
-                parameterWithName("mfaCode").required().type(NUMBER).description("A one time passcode from a registered multi-factor generator"),
                 opaqueFormatParameter,
                 loginHintParameter
         );
@@ -406,7 +382,7 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         );
 
         Snippet responseFields = responseFields(
-                accessTokenFieldDescriptor,
+                fieldWithPath("access_token").description("This field is always `null`."),
                 tokenTypeFieldDescriptor,
                 expiresInFieldDescriptor,
                 scopeFieldDescriptorWhenUserToken,
@@ -420,20 +396,113 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     @Test
     void getTokenUsingSaml2BearerGrant() throws Exception {
-        RandomValueStringGenerator generator = new RandomValueStringGenerator();
         SamlTestUtils samlTestUtils = new SamlTestUtils();
         samlTestUtils.initializeSimple();
 
-        String subdomain = generator.generate().toLowerCase();
+        final String subdomain = "68uexx";
         //all our SAML defaults use :8080/uaa/ so we have to use that here too
-        String host = subdomain + ".localhost";
-        String fullPath = "/uaa/oauth/token/alias/" + subdomain + ".cloudfoundry-saml-login";
-        String origin = subdomain + ".cloudfoundry-saml-login";
+        final String host = subdomain + ".localhost";
+        final String fullPath = "/uaa/oauth/token/alias/" + subdomain + ".cloudfoundry-saml-login";
+        final String origin = subdomain + ".cloudfoundry-saml-login";
 
         MockMvcUtils.IdentityZoneCreationResult zone = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, this.webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
 
-        //create an actual IDP, so we can fetch metadata
-        String idpMetadata = MockMvcUtils.getIDPMetaData(mockMvc, subdomain);
+        //Mock an IDP metadata
+        String idpMetadata = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<md:EntityDescriptor xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" ID=\"" + origin + "\"\n" +
+                "                     entityID=\"68uexx.cloudfoundry-saml-login\">\n" +
+                "    <ds:Signature xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\">\n" +
+                "        <ds:SignedInfo>\n" +
+                "            <ds:CanonicalizationMethod Algorithm=\"http://www.w3.org/2001/10/xml-exc-c14n#\"/>\n" +
+                "            <ds:SignatureMethod Algorithm=\"http://www.w3.org/2000/09/xmldsig#rsa-sha1\"/>\n" +
+                "            <ds:Reference URI=\"#" + origin + "\">\n" +
+                "                <ds:Transforms>\n" +
+                "                    <ds:Transform Algorithm=\"http://www.w3.org/2000/09/xmldsig#enveloped-signature\"/>\n" +
+                "                    <ds:Transform Algorithm=\"http://www.w3.org/2001/10/xml-exc-c14n#\"/>\n" +
+                "                </ds:Transforms>\n" +
+                "                <ds:DigestMethod Algorithm=\"http://www.w3.org/2000/09/xmldsig#sha1\"/>\n" +
+                "                <ds:DigestValue>MNO5mOgijKliauTLhxL1pqT15s4=</ds:DigestValue>\n" +
+                "            </ds:Reference>\n" +
+                "        </ds:SignedInfo>\n" +
+                "        <ds:SignatureValue>\n" +
+                "            CwxB189hOth7P4g+jswYiG1XHyy0a8Pci6LahimDi0sSuWF5ui1Dw8MSamNDfi2GC5QGArrupPdxgX5F8BFFuio3XkmcQqRhsC01R2u1/NhpabGTgczrk1LYMpCaIOitaXRM2cEkqrmf/s6S3zXDQkQJTcJefc/0NrYgFN6Pisc=\n" +
+                "        </ds:SignatureValue>\n" +
+                "        <ds:KeyInfo>\n" +
+                "            <ds:X509Data>\n" +
+                "                <ds:X509Certificate>MIIDSTCCArKgAwIBAgIBADANBgkqhkiG9w0BAQQFADB8MQswCQYDVQQGEwJhdzEOMAwGA1UECBMF\n" +
+                "                    YXJ1YmExDjAMBgNVBAoTBWFydWJhMQ4wDAYDVQQHEwVhcnViYTEOMAwGA1UECxMFYXJ1YmExDjAM\n" +
+                "                    BgNVBAMTBWFydWJhMR0wGwYJKoZIhvcNAQkBFg5hcnViYUBhcnViYS5hcjAeFw0xNTExMjAyMjI2\n" +
+                "                    MjdaFw0xNjExMTkyMjI2MjdaMHwxCzAJBgNVBAYTAmF3MQ4wDAYDVQQIEwVhcnViYTEOMAwGA1UE\n" +
+                "                    ChMFYXJ1YmExDjAMBgNVBAcTBWFydWJhMQ4wDAYDVQQLEwVhcnViYTEOMAwGA1UEAxMFYXJ1YmEx\n" +
+                "                    HTAbBgkqhkiG9w0BCQEWDmFydWJhQGFydWJhLmFyMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKB\n" +
+                "                    gQDHtC5gUXxBKpEqZTLkNvFwNGnNIkggNOwOQVNbpO0WVHIivig5L39WqS9u0hnA+O7MCA/KlrAR\n" +
+                "                    4bXaeVVhwfUPYBKIpaaTWFQR5cTR1UFZJL/OF9vAfpOwznoD66DDCnQVpbCjtDYWX+x6imxn8HCY\n" +
+                "                    xhMol6ZnTbSsFW6VZjFMjQIDAQABo4HaMIHXMB0GA1UdDgQWBBTx0lDzjH/iOBnOSQaSEWQLx1sy\n" +
+                "                    GDCBpwYDVR0jBIGfMIGcgBTx0lDzjH/iOBnOSQaSEWQLx1syGKGBgKR+MHwxCzAJBgNVBAYTAmF3\n" +
+                "                    MQ4wDAYDVQQIEwVhcnViYTEOMAwGA1UEChMFYXJ1YmExDjAMBgNVBAcTBWFydWJhMQ4wDAYDVQQL\n" +
+                "                    EwVhcnViYTEOMAwGA1UEAxMFYXJ1YmExHTAbBgkqhkiG9w0BCQEWDmFydWJhQGFydWJhLmFyggEA\n" +
+                "                    MAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQEEBQADgYEAYvBJ0HOZbbHClXmGUjGs+GS+xC1FO/am\n" +
+                "                    2suCSYqNB9dyMXfOWiJ1+TLJk+o/YZt8vuxCKdcZYgl4l/L6PxJ982SRhc83ZW2dkAZI4M0/Ud3o\n" +
+                "                    ePe84k8jm3A7EvH5wi5hvCkKRpuRBwn3Ei+jCRouxTbzKPsuCVB+1sNyxMTXzf0=\n" +
+                "                </ds:X509Certificate>\n" +
+                "            </ds:X509Data>\n" +
+                "        </ds:KeyInfo>\n" +
+                "    </ds:Signature>\n" +
+                "    <md:IDPSSODescriptor WantAuthnRequestsSigned=\"false\"\n" +
+                "                         protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n" +
+                "        <md:KeyDescriptor use=\"signing\">\n" +
+                "            <ds:KeyInfo xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\">\n" +
+                "                <ds:X509Data>\n" +
+                "                    <ds:X509Certificate>MIIDSTCCArKgAwIBAgIBADANBgkqhkiG9w0BAQQFADB8MQswCQYDVQQGEwJhdzEOMAwGA1UECBMF\n" +
+                "                        YXJ1YmExDjAMBgNVBAoTBWFydWJhMQ4wDAYDVQQHEwVhcnViYTEOMAwGA1UECxMFYXJ1YmExDjAM\n" +
+                "                        BgNVBAMTBWFydWJhMR0wGwYJKoZIhvcNAQkBFg5hcnViYUBhcnViYS5hcjAeFw0xNTExMjAyMjI2\n" +
+                "                        MjdaFw0xNjExMTkyMjI2MjdaMHwxCzAJBgNVBAYTAmF3MQ4wDAYDVQQIEwVhcnViYTEOMAwGA1UE\n" +
+                "                        ChMFYXJ1YmExDjAMBgNVBAcTBWFydWJhMQ4wDAYDVQQLEwVhcnViYTEOMAwGA1UEAxMFYXJ1YmEx\n" +
+                "                        HTAbBgkqhkiG9w0BCQEWDmFydWJhQGFydWJhLmFyMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKB\n" +
+                "                        gQDHtC5gUXxBKpEqZTLkNvFwNGnNIkggNOwOQVNbpO0WVHIivig5L39WqS9u0hnA+O7MCA/KlrAR\n" +
+                "                        4bXaeVVhwfUPYBKIpaaTWFQR5cTR1UFZJL/OF9vAfpOwznoD66DDCnQVpbCjtDYWX+x6imxn8HCY\n" +
+                "                        xhMol6ZnTbSsFW6VZjFMjQIDAQABo4HaMIHXMB0GA1UdDgQWBBTx0lDzjH/iOBnOSQaSEWQLx1sy\n" +
+                "                        GDCBpwYDVR0jBIGfMIGcgBTx0lDzjH/iOBnOSQaSEWQLx1syGKGBgKR+MHwxCzAJBgNVBAYTAmF3\n" +
+                "                        MQ4wDAYDVQQIEwVhcnViYTEOMAwGA1UEChMFYXJ1YmExDjAMBgNVBAcTBWFydWJhMQ4wDAYDVQQL\n" +
+                "                        EwVhcnViYTEOMAwGA1UEAxMFYXJ1YmExHTAbBgkqhkiG9w0BCQEWDmFydWJhQGFydWJhLmFyggEA\n" +
+                "                        MAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQEEBQADgYEAYvBJ0HOZbbHClXmGUjGs+GS+xC1FO/am\n" +
+                "                        2suCSYqNB9dyMXfOWiJ1+TLJk+o/YZt8vuxCKdcZYgl4l/L6PxJ982SRhc83ZW2dkAZI4M0/Ud3o\n" +
+                "                        ePe84k8jm3A7EvH5wi5hvCkKRpuRBwn3Ei+jCRouxTbzKPsuCVB+1sNyxMTXzf0=\n" +
+                "                    </ds:X509Certificate>\n" +
+                "                </ds:X509Data>\n" +
+                "            </ds:KeyInfo>\n" +
+                "        </md:KeyDescriptor>\n" +
+                "        <md:KeyDescriptor use=\"encryption\">\n" +
+                "            <ds:KeyInfo xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\">\n" +
+                "                <ds:X509Data>\n" +
+                "                    <ds:X509Certificate>MIIDSTCCArKgAwIBAgIBADANBgkqhkiG9w0BAQQFADB8MQswCQYDVQQGEwJhdzEOMAwGA1UECBMF\n" +
+                "                        YXJ1YmExDjAMBgNVBAoTBWFydWJhMQ4wDAYDVQQHEwVhcnViYTEOMAwGA1UECxMFYXJ1YmExDjAM\n" +
+                "                        BgNVBAMTBWFydWJhMR0wGwYJKoZIhvcNAQkBFg5hcnViYUBhcnViYS5hcjAeFw0xNTExMjAyMjI2\n" +
+                "                        MjdaFw0xNjExMTkyMjI2MjdaMHwxCzAJBgNVBAYTAmF3MQ4wDAYDVQQIEwVhcnViYTEOMAwGA1UE\n" +
+                "                        ChMFYXJ1YmExDjAMBgNVBAcTBWFydWJhMQ4wDAYDVQQLEwVhcnViYTEOMAwGA1UEAxMFYXJ1YmEx\n" +
+                "                        HTAbBgkqhkiG9w0BCQEWDmFydWJhQGFydWJhLmFyMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKB\n" +
+                "                        gQDHtC5gUXxBKpEqZTLkNvFwNGnNIkggNOwOQVNbpO0WVHIivig5L39WqS9u0hnA+O7MCA/KlrAR\n" +
+                "                        4bXaeVVhwfUPYBKIpaaTWFQR5cTR1UFZJL/OF9vAfpOwznoD66DDCnQVpbCjtDYWX+x6imxn8HCY\n" +
+                "                        xhMol6ZnTbSsFW6VZjFMjQIDAQABo4HaMIHXMB0GA1UdDgQWBBTx0lDzjH/iOBnOSQaSEWQLx1sy\n" +
+                "                        GDCBpwYDVR0jBIGfMIGcgBTx0lDzjH/iOBnOSQaSEWQLx1syGKGBgKR+MHwxCzAJBgNVBAYTAmF3\n" +
+                "                        MQ4wDAYDVQQIEwVhcnViYTEOMAwGA1UEChMFYXJ1YmExDjAMBgNVBAcTBWFydWJhMQ4wDAYDVQQL\n" +
+                "                        EwVhcnViYTEOMAwGA1UEAxMFYXJ1YmExHTAbBgkqhkiG9w0BCQEWDmFydWJhQGFydWJhLmFyggEA\n" +
+                "                        MAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQEEBQADgYEAYvBJ0HOZbbHClXmGUjGs+GS+xC1FO/am\n" +
+                "                        2suCSYqNB9dyMXfOWiJ1+TLJk+o/YZt8vuxCKdcZYgl4l/L6PxJ982SRhc83ZW2dkAZI4M0/Ud3o\n" +
+                "                        ePe84k8jm3A7EvH5wi5hvCkKRpuRBwn3Ei+jCRouxTbzKPsuCVB+1sNyxMTXzf0=\n" +
+                "                    </ds:X509Certificate>\n" +
+                "                </ds:X509Data>\n" +
+                "            </ds:KeyInfo>\n" +
+                "        </md:KeyDescriptor>\n" +
+                "        <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n" +
+                "        <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>\n" +
+                "        <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n" +
+                "        <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\"\n" +
+                "                                Location=\"http://" + host + ":8080/uaa/saml/idp/SSO/alias/" + origin + "\"/>\n" +
+                "        <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\"\n" +
+                "                                Location=\"http://" + host + ":8080/uaa/saml/idp/SSO/alias/" + origin + "\"/>\n" +
+                "    </md:IDPSSODescriptor>\n" +
+                "</md:EntityDescriptor>";
 
         //create an IDP in the default zone
         SamlIdentityProviderDefinition idpDef = createLocalSamlIdpDefinition(origin, zone.getIdentityZone().getId(), idpMetadata);
@@ -448,19 +517,17 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         identityProviderProvisioning.create(provider, zone.getIdentityZone().getId());
         IdentityZoneHolder.clear();
 
-        String assertion = samlTestUtils.mockAssertionEncoded(subdomain + ".cloudfoundry-saml-login",
-                "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
+        String assertion = samlTestUtils.mockAssertionEncoded(
+                origin,
+                NameID.UNSPECIFIED,
                 "Saml2BearerIntegrationUser",
-                "http://" + subdomain + ".localhost:8080/uaa/oauth/token/alias/" + subdomain + ".cloudfoundry-saml-login",
-                subdomain + ".cloudfoundry-saml-login"
-        );
+                "http://" + host + ":8080/uaa/oauth/token/alias/" + origin,
+                origin);
 
         //create client in default zone
         String clientId = "testclient" + generator.generate();
         setUpClients(clientId, "uaa.none", "uaa.user,openid", GRANT_TYPE_SAML2_BEARER + ",password,refresh_token", true, TEST_REDIRECT_URI, null, 600, zone.getIdentityZone());
 
-
-        //String fullPath = "/uaa/oauth/token";
         MockHttpServletRequestBuilder post = MockMvcRequestBuilders.post(fullPath)
                 .with(request -> {
                     request.setServerPort(8080);
@@ -475,6 +542,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .param("grant_type", TokenConstants.GRANT_TYPE_SAML2_BEARER)
                 .param("client_id", clientId)
                 .param("client_secret", "secret")
+                .param("client_assertion", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IjU4ZDU1YzUwMGNjNmI1ODM3OTYxN2UwNmU3ZGVjNmNhIn0.eyJzdWIiOiJsb2dpbiIsImlzcyI6ImxvZ2luIiwianRpIjoiNThkNTVjNTAwY2M2YjU4Mzc5NjE3ZTA2ZTdhZmZlZSIsImV4cCI6MTIzNDU2NzgsImF1ZCI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MC91YWEvb2F1dGgvdG9rZW4ifQ.jwWw0OKZecd4ZjtwQ_ievqBVrh2SieqMF6vY74Oo5H6v-Ibcmumq96NLNtoUEwaAEQQOHb8MWcC8Gwi9dVQdCrtpomC86b_LKkihRBSKuqpw0udL9RMH5kgtC04ctsN0yZNifUWMP85VHn97Ual5eZ2miaBFob3H5jUe98CcBj1TSRehr64qBFYuwt9vD19q6U-ONhRt0RXBPB7ayHAOMYtb1LFIzGAiKvqWEy9f-TBPXSsETjKkAtSuM-WVWi4EhACMtSvI6iJN15f7qlverRSkGIdh1j2vPXpKKBJoRhoLw6YqbgcUC9vAr17wfa_POxaRHvh9JPty0ZXLA4XPtA")
+                .param("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
                 .param("assertion", assertion)
                 .param("scope", "openid");
 
@@ -482,6 +551,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         Snippet requestParameters = requestParameters(
                 clientIdParameter.description("The client ID of the receiving client, this client must have `urn:ietf:params:oauth:grant-type:saml2-bearer` grant type"),
                 clientSecretParameter,
+                clientAssertion,
+                clientAssertionType,
                 grantTypeParameter.description("The type of token grant requested, in this case `" + GRANT_TYPE_SAML2_BEARER + "`"),
                 assertionFormatParameter,
                 scopeParameter
@@ -602,6 +673,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param(CLIENT_ID, "app")
                 .param("client_secret", "appclientsecret")
+                .param("client_assertion", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IjU4ZDU1YzUwMGNjNmI1ODM3OTYxN2UwNmU3ZGVjNmNhIn0.eyJzdWIiOiJsb2dpbiIsImlzcyI6ImxvZ2luIiwianRpIjoiNThkNTVjNTAwY2M2YjU4Mzc5NjE3ZTA2ZTdhZmZlZSIsImV4cCI6MTIzNDU2NzgsImF1ZCI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MC91YWEvb2F1dGgvdG9rZW4ifQ.jwWw0OKZecd4ZjtwQ_ievqBVrh2SieqMF6vY74Oo5H6v-Ibcmumq96NLNtoUEwaAEQQOHb8MWcC8Gwi9dVQdCrtpomC86b_LKkihRBSKuqpw0udL9RMH5kgtC04ctsN0yZNifUWMP85VHn97Ual5eZ2miaBFob3H5jUe98CcBj1TSRehr64qBFYuwt9vD19q6U-ONhRt0RXBPB7ayHAOMYtb1LFIzGAiKvqWEy9f-TBPXSsETjKkAtSuM-WVWi4EhACMtSvI6iJN15f7qlverRSkGIdh1j2vPXpKKBJoRhoLw6YqbgcUC9vAr17wfa_POxaRHvh9JPty0ZXLA4XPtA")
+                .param("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
                 .param(GRANT_TYPE, GRANT_TYPE_PASSWORD)
                 .param("username", user.getUserName())
                 .param("password", user.getPassword())
@@ -615,6 +688,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param(CLIENT_ID, "app")
                 .param("client_secret", "appclientsecret")
+                .param("client_assertion", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IjU4ZDU1YzUwMGNjNmI1ODM3OTYxN2UwNmU3ZGVjNmNhIn0.eyJzdWIiOiJsb2dpbiIsImlzcyI6ImxvZ2luIiwianRpIjoiNThkNTVjNTAwY2M2YjU4Mzc5NjE3ZTA2ZTdhZmZlZSIsImV4cCI6MTIzNDU2NzgsImF1ZCI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MC91YWEvb2F1dGgvdG9rZW4ifQ.jwWw0OKZecd4ZjtwQ_ievqBVrh2SieqMF6vY74Oo5H6v-Ibcmumq96NLNtoUEwaAEQQOHb8MWcC8Gwi9dVQdCrtpomC86b_LKkihRBSKuqpw0udL9RMH5kgtC04ctsN0yZNifUWMP85VHn97Ual5eZ2miaBFob3H5jUe98CcBj1TSRehr64qBFYuwt9vD19q6U-ONhRt0RXBPB7ayHAOMYtb1LFIzGAiKvqWEy9f-TBPXSsETjKkAtSuM-WVWi4EhACMtSvI6iJN15f7qlverRSkGIdh1j2vPXpKKBJoRhoLw6YqbgcUC9vAr17wfa_POxaRHvh9JPty0ZXLA4XPtA")
+                .param("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
                 .param(GRANT_TYPE, GRANT_TYPE_REFRESH_TOKEN)
                 .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
                 .param("refresh_token", refreshToken.getValue());
@@ -622,7 +697,9 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         Snippet requestParameters = requestParameters(
                 grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `refresh_token`"),
                 clientIdParameter,
-                clientSecretParameter,
+                clientSecretParameter.description("Optional and can be omitted if token before was requested using [PKCE](https://tools.ietf.org/html/rfc7636) with `code_challenge_method=S256` without a secret or client_assertion is used for private_key_jwt client authentication."),
+                clientAssertion,
+                clientAssertionType,
                 parameterWithName("refresh_token").required().type(STRING).description("the refresh_token that was returned along with the access token."),
                 opaqueFormatParameter
         );
@@ -686,6 +763,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param(CLIENT_ID, "login")
                 .param("client_secret", "loginsecret")
+                .param("client_assertion", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IjU4ZDU1YzUwMGNjNmI1ODM3OTYxN2UwNmU3ZGVjNmNhIn0.eyJzdWIiOiJsb2dpbiIsImlzcyI6ImxvZ2luIiwianRpIjoiNThkNTVjNTAwY2M2YjU4Mzc5NjE3ZTA2ZTdhZmZlZSIsImV4cCI6MTIzNDU2NzgsImF1ZCI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MC91YWEvb2F1dGgvdG9rZW4ifQ.jwWw0OKZecd4ZjtwQ_ievqBVrh2SieqMF6vY74Oo5H6v-Ibcmumq96NLNtoUEwaAEQQOHb8MWcC8Gwi9dVQdCrtpomC86b_LKkihRBSKuqpw0udL9RMH5kgtC04ctsN0yZNifUWMP85VHn97Ual5eZ2miaBFob3H5jUe98CcBj1TSRehr64qBFYuwt9vD19q6U-ONhRt0RXBPB7ayHAOMYtb1LFIzGAiKvqWEy9f-TBPXSsETjKkAtSuM-WVWi4EhACMtSvI6iJN15f7qlverRSkGIdh1j2vPXpKKBJoRhoLw6YqbgcUC9vAr17wfa_POxaRHvh9JPty0ZXLA4XPtA")
+                .param("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
                 .param(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE)
                 .param("code", code)
                 .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
@@ -697,7 +776,9 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 parameterWithName(REDIRECT_URI).type(STRING).description("redirection URI to which the authorization server will send the user-agent back once access is granted (or denied)").attributes(SnippetUtils.constraints.value("Required if provided on authorization request")),
                 parameterWithName("code").required().type(STRING).description(codeDescription),
                 grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `authorization_code`"),
-                clientSecretParameter.description("<small><mark>UAA 75.21.0</mark></small> Optional and can be omitted if client has configured allowpublic and [PKCE](https://tools.ietf.org/html/rfc7636) with `code_challange_method=S256` is used to create to `code`."),
+                clientSecretParameter.description("<small><mark>UAA 75.21.0</mark></small> Optional and can be omitted if client has configured allowpublic and [PKCE](https://tools.ietf.org/html/rfc7636) with `code_challenge_method=S256` is used to create to `code`."),
+                clientAssertion,
+                clientAssertionType,
                 codeVerifier,
                 opaqueFormatParameter
         );
@@ -725,7 +806,7 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 "",
                 null
         );
-        BaseClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "clients.read");
+        UaaClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "clients.read");
 
 
         String userInfoToken = getUserOAuthAccessToken(
@@ -762,7 +843,6 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .andExpect(content().string(containsString("\"error\":\"invalid_token\"")));
     }
 
-
     @Test
     void revokeAllTokens_forAUserClientCombination() throws Exception {
         String adminToken = getClientCredentialsOAuthAccessToken(
@@ -772,8 +852,8 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 "",
                 null
         );
-        BaseClientDetails client = createClient(adminToken, "openid", "password", "");
-        BaseClientDetails client2 = createClient(adminToken, "openid", "password", "");
+        UaaClientDetails client = createClient(adminToken, "openid", "password", "");
+        UaaClientDetails client2 = createClient(adminToken, "openid", "password", "");
 
 
         String userInfoTokenToRevoke = getUserOAuthAccessToken(
@@ -813,7 +893,6 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                         .header("Authorization", "Bearer " + userInfoTokenToRevoke))
                 .andExpect(status().isOk());
 
-
         MockHttpServletRequestBuilder get = RestDocumentationRequestBuilders.get("/oauth/token/revoke/user/{userId}/client/{clientId}", user.getId(), client.getClientId());
 
         mockMvc.perform(get
@@ -843,7 +922,7 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 null,
                 true
         );
-        BaseClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "clients.read");
+        UaaClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "clients.read");
         String readClientsToken =
                 getClientCredentialsOAuthAccessToken(
                         mockMvc,
@@ -883,8 +962,7 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 true
         );
 
-        BaseClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "clients.read");
-
+        UaaClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "clients.read");
 
         String userInfoToken = getUserOAuthAccessToken(
                 mockMvc,
@@ -932,7 +1010,7 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 true
         );
 
-        BaseClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "tokens.list");
+        UaaClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "tokens.list");
         String clientToken = getClientCredentialsOAuthAccessToken(
                 mockMvc,
                 client.getClientId(),
@@ -972,7 +1050,7 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 true
         );
 
-        BaseClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "tokens.list");
+        UaaClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "tokens.list");
         String clientToken = getClientCredentialsOAuthAccessToken(
                 mockMvc,
                 client.getClientId(),
@@ -981,7 +1059,6 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 null,
                 true
         );
-
 
         getUserOAuthAccessToken(
                 mockMvc,
@@ -1013,15 +1090,15 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .andDo(document("{ClassName}/{methodName}", preprocessResponse(prettyPrint()), requestHeaders, pathParameters, listTokenResponseFields));
     }
 
-    private BaseClientDetails createClient(String token, String scopes, String grantTypes, String authorities) throws Exception {
-        BaseClientDetails client = new BaseClientDetails(
+    private UaaClientDetails createClient(String token, String scopes, String grantTypes, String authorities) throws Exception {
+        UaaClientDetails client = new UaaClientDetails(
                 new RandomValueStringGenerator().generate(),
                 "",
                 scopes,
                 grantTypes,
                 authorities, "http://redirect.url");
         client.setClientSecret(SECRET);
-        BaseClientDetails clientDetails = MockMvcUtils.createClient(mockMvc, token, client);
+        UaaClientDetails clientDetails = MockMvcUtils.createClient(mockMvc, token, client);
         clientDetails.setClientSecret(SECRET);
         return clientDetails;
     }

@@ -41,8 +41,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.oauth2.common.util.OAuth2Utils;
 import org.springframework.security.oauth2.common.util.RandomValueStringGenerator;
 import org.springframework.security.oauth2.provider.ClientDetails;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -102,7 +103,7 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
 
     IdentityZone zone;
     ScimUser user;
-    BaseClientDetails client;
+    UaaClientDetails client;
 
     private String refreshToken;
     private Map<String, String> keys;
@@ -120,6 +121,7 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
     @BeforeEach
     void before() {
         timeService = mock(TimeServiceImpl.class);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod();
         when(timeService.getCurrentDate()).thenCallRealMethod();
 
         refreshTokenValidityResolver.setTimeService(timeService);
@@ -319,7 +321,7 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
         String tokenId = getJwtRefreshToken(client.getClientId(), SECRET, user.getUserName(), SECRET, getZoneHostUrl(zone));
         IdentityZoneHolder.set(zone);
         String token = revocableTokenProvisioning.retrieve(tokenId, IdentityZoneHolder.get().getId()).getValue();
-        Map<String, Object> claims = UaaTokenUtils.getClaims(token);
+        Map<String, Object> claims = UaaTokenUtils.getClaims(token, Map.class);
         assertNotNull(claims.get(ClaimConstants.REVOCABLE));
         assertTrue((Boolean) claims.get(ClaimConstants.REVOCABLE));
     }
@@ -339,8 +341,8 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
 
     private void assertRefreshIdTokenCorrect(String originalIdTokenJwt, String idTokenJwtFromRefreshGrant) {
         assertNotNull(idTokenJwtFromRefreshGrant);
-        Map<String, Object> originalIdClaims = getClaims(originalIdTokenJwt);
-        Map<String, Object> idClaims = getClaims(idTokenJwtFromRefreshGrant);
+        Map<String, Object> originalIdClaims = getClaims(originalIdTokenJwt, Map.class);
+        Map<String, Object> idClaims = getClaims(idTokenJwtFromRefreshGrant, Map.class);
 
         // These claims should be the same in the old and new id tokens: auth_time, iss, sub, azp
         // http://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
@@ -382,7 +384,7 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
 
     @Test
     void refreshTokenGrantType_returnsIdToken_toOpenIdClients() throws Exception {
-        when(timeService.getCurrentTimeMillis()).thenReturn(1000L);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(1000L);
         client = setUpClients("openidclient", "", "openid", "password,refresh_token", true);
         user = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, "openiduser", "", OriginKeys.UAA, "uaa");
         CompositeToken tokenResponse = getTokensWithPasswordGrant(client.getClientId(), SECRET, user.getUserName(), SECRET, "localhost", "jwt");
@@ -400,7 +402,7 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
 
     @Test
     void refreshTokenGrantType_returnsIdToken_toOpenIdClients_withOpaqueRefreshToken() throws Exception {
-        when(timeService.getCurrentTimeMillis()).thenReturn(1000L);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(1000L);
         client = setUpClients("openidclient", "", "openid", "password,refresh_token", true);
         user = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, "openiduser", "", OriginKeys.UAA, "uaa");
         CompositeToken tokenResponse = getTokensWithPasswordGrant(client.getClientId(), SECRET, user.getUserName(), SECRET, "localhost", "opaque");
@@ -419,7 +421,7 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
     @Test
     void refreshTokenGrantType_withJwtTokens_preservesRefreshTokenExpiryClaim() throws Exception {
         createClientAndUserInRandomZone("jwt");
-        when(timeService.getCurrentTimeMillis()).thenReturn(1000L);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(1000L);
         CompositeToken tokenResponse = getTokensWithPasswordGrant(client.getClientId(), SECRET, user.getUserName(), SECRET, getZoneHostUrl(zone), "jwt");
         String refreshToken = tokenResponse.getRefreshToken().getValue();
         when(timeService.getCurrentTimeMillis()).thenReturn(5000L);
@@ -429,13 +431,13 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
         assertEquals(HttpStatus.SC_OK, refreshResponse.getStatus());
         CompositeToken compositeToken = JsonUtils.readValue(refreshResponse.getContentAsString(), CompositeToken.class);
         String refreshTokenJwt = compositeToken.getRefreshToken().getValue();
-        assertThat(getClaims(refreshTokenJwt).get(EXPIRY_IN_SECONDS), equalTo(getClaims(refreshToken).get(EXPIRY_IN_SECONDS)));
+        assertThat(getClaims(refreshTokenJwt, Map.class).get(EXPIRY_IN_SECONDS), equalTo(getClaims(refreshToken, Map.class).get(EXPIRY_IN_SECONDS)));
 
         CompositeToken newTokenResponse = getTokensWithPasswordGrant(client.getClientId(), SECRET, user.getUserName(), SECRET, getZoneHostUrl(zone), "jwt");
         String newRefreshToken = newTokenResponse.getRefreshToken().getValue();
 
-        assertThat(getClaims(newRefreshToken).get(EXPIRY_IN_SECONDS), not(nullValue()));
-        assertThat(getClaims(newRefreshToken).get(EXPIRY_IN_SECONDS), not(equalTo(getClaims(refreshToken).get(EXPIRY_IN_SECONDS))));
+        assertThat(getClaims(newRefreshToken, Map.class).get(EXPIRY_IN_SECONDS), not(nullValue()));
+        assertThat(getClaims(newRefreshToken, Map.class).get(EXPIRY_IN_SECONDS), not(equalTo(getClaims(refreshToken, Map.class).get(EXPIRY_IN_SECONDS))));
     }
 
     @Test
@@ -445,12 +447,12 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
         client.setRefreshTokenValiditySeconds(refreshTokenValiditySeconds);
         clientDetailsService.updateClientDetails(client, zone.getId());
         long firstGrantMillis = 1000L;
-        when(timeService.getCurrentTimeMillis()).thenReturn(firstGrantMillis);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(firstGrantMillis);
         CompositeToken tokenResponse = getTokensWithPasswordGrant(client.getClientId(), SECRET, user.getUserName(), SECRET, getZoneHostUrl(zone), "opaque");
         String firstRefreshToken = tokenResponse.getRefreshToken().getValue();
 
         long notYetExpiredTimeMillis = 5000L;
-        when(timeService.getCurrentTimeMillis()).thenReturn(notYetExpiredTimeMillis);
+        when(timeService.getCurrentTimeMillis()).thenCallRealMethod().thenReturn(notYetExpiredTimeMillis);
         MockHttpServletResponse refreshResponse = useRefreshToken(firstRefreshToken, client.getClientId(), SECRET, getZoneHostUrl(zone));
         String secondRefreshToken = JsonUtils.readValue(refreshResponse.getContentAsString(), CompositeToken.class)
                                                 .getRefreshToken()
@@ -458,7 +460,7 @@ class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
         assertEquals(HttpStatus.SC_OK, refreshResponse.getStatus());
 
         long expiredTimeMillis = firstGrantMillis + refreshTokenValiditySeconds * 1000L + 1L;
-        when(timeService.getCurrentTimeMillis()).thenReturn(expiredTimeMillis);
+        when(timeService.getCurrentTimeMillis()).thenReturn(Instant.now().plusMillis(expiredTimeMillis).toEpochMilli());
         MockHttpServletResponse expiredResponse = useRefreshToken(firstRefreshToken, client.getClientId(), SECRET, getZoneHostUrl(zone));
         assertEquals(HttpStatus.SC_UNAUTHORIZED, expiredResponse.getStatus());
         MockHttpServletResponse alsoExpiredResponse = useRefreshToken(secondRefreshToken, client.getClientId(), SECRET, getZoneHostUrl(zone));

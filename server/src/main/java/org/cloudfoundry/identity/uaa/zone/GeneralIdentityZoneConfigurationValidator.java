@@ -2,6 +2,7 @@ package org.cloudfoundry.identity.uaa.zone;
 
 import org.cloudfoundry.identity.uaa.saml.SamlKey;
 import org.cloudfoundry.identity.uaa.util.KeyWithCert;
+import org.cloudfoundry.identity.uaa.util.UaaStringUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -14,11 +15,7 @@ import java.util.regex.PatternSyntaxException;
 @Component
 public class GeneralIdentityZoneConfigurationValidator implements IdentityZoneConfigurationValidator {
 
-    private final MfaConfigValidator mfaConfigValidator;
-
-    public GeneralIdentityZoneConfigurationValidator(final MfaConfigValidator mfaConfigValidator) {
-        this.mfaConfigValidator = mfaConfigValidator;
-    }
+    public GeneralIdentityZoneConfigurationValidator() {}
 
     @Override
     public IdentityZoneConfiguration validate(IdentityZone zone, IdentityZoneValidator.Mode mode) throws InvalidIdentityZoneConfigurationException {
@@ -64,16 +61,16 @@ public class GeneralIdentityZoneConfigurationValidator implements IdentityZoneCo
                     }
                 }
             }
-            if (!StringUtils.isEmpty(config.getIssuer())) {
-                if (tokenPolicy == null || StringUtils.isEmpty(tokenPolicy.getActiveKeyId())) {
-                    throw new InvalidIdentityZoneConfigurationException("You cannot set issuer value unless you have set your own signing key for this identity zone.");
-                }
+            if (UaaStringUtils.isNotEmpty(config.getIssuer()) && (tokenPolicy == null || UaaStringUtils.isNullOrEmpty(tokenPolicy.getActiveKeyId()))) {
+                throw new InvalidIdentityZoneConfigurationException("You cannot set issuer value unless you have set your own signing key for this identity zone.");
             }
 
             validateRegexStrings(config.getCorsPolicy().getXhrConfiguration().getAllowedUris(), "config.corsPolicy.xhrConfiguration.allowedUris");
             validateRegexStrings(config.getCorsPolicy().getXhrConfiguration().getAllowedOrigins(), "config.corsPolicy.xhrConfiguration.allowedOrigins");
             validateRegexStrings(config.getCorsPolicy().getDefaultConfiguration().getAllowedUris(), "config.corsPolicy.defaultConfiguration.allowedUris");
             validateRegexStrings(config.getCorsPolicy().getDefaultConfiguration().getAllowedOrigins(), "config.corsPolicy.defaultConfiguration.allowedOrigins");
+
+            UserConfigValidator.validate(config.getUserConfig());
         }
 
         if (config.getBranding() != null && config.getBranding().getConsent() != null) {
@@ -84,19 +81,14 @@ public class GeneralIdentityZoneConfigurationValidator implements IdentityZoneCo
             BannerValidator.validate(config.getBranding().getBanner());
         }
 
-        if (config.getMfaConfig() != null) {
-            mfaConfigValidator.validate(config.getMfaConfig(), zone.getId());
-        }
-
         return config;
     }
 
-    @SuppressWarnings("javasecurity:S2631")
     private void validateRegexStrings(List<String> uris, String fieldName) throws InvalidIdentityZoneConfigurationException {
         if (uris != null) {
             for (String uri : uris) {
                 try {
-                    Pattern.compile(uri);
+                    Pattern.compile(UaaStringUtils.getCleanedUserControlString(uri));
                 } catch (PatternSyntaxException patternSyntaxException) {
                     throw new InvalidIdentityZoneConfigurationException(String.format("Invalid value in %s: '%s'.", fieldName, uri), patternSyntaxException);
                 }

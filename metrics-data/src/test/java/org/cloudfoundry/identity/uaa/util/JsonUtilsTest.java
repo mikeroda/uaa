@@ -1,17 +1,22 @@
 package org.cloudfoundry.identity.uaa.util;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+
+import org.assertj.core.api.Assertions;
 import org.cloudfoundry.identity.uaa.metrics.UrlGroup;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 class JsonUtilsTest {
   private static final String jsonTestObjectString = "{\"pattern\":\"/pattern\",\"group\":\"group\",\"limit\":1000,\"category\":\"category\"}";
@@ -43,6 +48,26 @@ class JsonUtilsTest {
   }
 
   @Test
+  void testReadValueAsMap() {
+    final String jsonInput = "{\"prop1\":\"abc\",\"prop2\":{\"prop2a\":\"def\",\"prop2b\":\"ghi\"},\"prop3\":[\"jkl\",\"mno\"]}";
+    final Map<String, Object> map = JsonUtils.readValueAsMap(jsonInput);
+    Assertions.assertThat(map).isNotNull();
+    Assertions.assertThat(map.get("prop1")).isNotNull().isEqualTo("abc");
+    Assertions.assertThat(map.get("prop2")).isNotNull().isInstanceOf(Map.class);
+    Assertions.assertThat(((Map<String, Object>) map.get("prop2")).get("prop2a")).isNotNull().isEqualTo("def");
+    Assertions.assertThat(((Map<String, Object>) map.get("prop2")).get("prop2b")).isNotNull().isEqualTo("ghi");
+    Assertions.assertThat(map.get("prop3")).isNotNull().isInstanceOf(List.class);
+    Assertions.assertThat((List<String>) map.get("prop3")).containsExactly("jkl", "mno");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"{", "}", "{\"prop1\":\"abc\","})
+  void testReadValueAsMap_Invalid(final String input) {
+    Assertions.assertThatExceptionOfType(JsonUtils.JsonUtilException.class)
+            .isThrownBy(() -> JsonUtils.readValueAsMap(input));
+  }
+
+  @Test
   void testReadValueBytes() {
     assertNotNull(JsonUtils.readValue(jsonTestObjectString.getBytes(), new TypeReference<Map<String, Object>>() {}));
     assertNull(JsonUtils.readValue((byte[])null, new TypeReference<Map<String, Object>>() {}));
@@ -68,14 +93,11 @@ class JsonUtilsTest {
   }
 
   @Test
-  void testSerializeExcludingPropertiesInnerCallFailed() {
-    Map<String, String> groupProperties = JsonUtils.readValue(jsonTestObjectString, new TypeReference<Map<String, String>>() {});
-    try {
-      JsonUtils.serializeExcludingProperties(groupProperties, "limit.unkonwn");
-      fail("not expected");
-    } catch (Exception e) {
-      assertTrue(e instanceof JsonUtils.JsonUtilException);
-    }
+  void testSerializeExcludingPropertiesInnerCallFails() {
+    Map<String, String> groupProperties = JsonUtils.readValue(jsonTestObjectString, new TypeReference<>() {});
+    assertThrows(JsonUtils.JsonUtilException.class, () -> {
+      JsonUtils.serializeExcludingProperties(groupProperties, "limit.unknown");
+    });
   }
 
   @Test

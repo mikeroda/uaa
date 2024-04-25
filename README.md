@@ -1,8 +1,6 @@
 <link href="https://raw.github.com/clownfart/Markdown-CSS/master/markdown.css" rel="stylesheet"></link>
 
-[![slack.cloudfoundry.org](https://slack.cloudfoundry.org/badge.svg)](https://cloudfoundry.slack.com/archives/C03FXANBV)
-
-> **_Warning_**: _MFA feature in UAA is currently deprecated and will be removed in a future UAA version._
+**Slack** [&#35;uaa](https://cloudfoundry.slack.com/archives/C03FXANBV)
 
 # CloudFoundry User Account and Authentication (UAA) Server
 
@@ -76,7 +74,7 @@ Security OAuth that can do the heavy lifting if your client is Java.
 ## Quick Start
 
 Requirements:
-* Java 11
+* Java 17
 
 If this works you are in business:
 
@@ -189,7 +187,6 @@ List of relations
  public | groups                        | table    | root
  public | identity_provider             | table    | root
  public | identity_zone                 | table    | root
- public | mfa_providers                 | table    | root
  public | oauth_client_details          | table    | root
  public | oauth_code                    | table    | root
  public | oauth_code_id_seq             | sequence | root
@@ -197,10 +194,8 @@ List of relations
  public | schema_version                | table    | root
  public | sec_audit                     | table    | root
  public | sec_audit_id_seq              | sequence | root
- public | service_provider              | table    | root
  public | spring_session                | table    | root
  public | spring_session_attributes     | table    | root
- public | user_google_mfa_credentials   | table    | root
  public | user_info                     | table    | root
  public | users                         | table    | root
 (23 rows)
@@ -304,7 +299,7 @@ Of course, you can always abandon the default values altogether and provide your
 
 Here are some ways for you to get involved in the community:
 
-* Join uaa channel on [![slack.cloudfoundry.org](https://slack.cloudfoundry.org/badge.svg)](https://cloudfoundry.slack.com/archives/C03FXANBV)
+* Join uaa on slack [&#35;uaa](https://cloudfoundry.slack.com/archives/C03FXANBV)
 * Create [github](https://github.com/cloudfoundry/uaa/issues) tickets for bugs and new features and comment and
   vote on the ones that you are interested in.
 * Github is for social coding: if you want to write code, we encourage

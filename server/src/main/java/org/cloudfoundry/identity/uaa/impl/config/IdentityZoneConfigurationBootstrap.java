@@ -44,8 +44,6 @@ public class IdentityZoneConfigurationBootstrap implements InitializingBean {
     private boolean selfServiceLinksEnabled = true;
     private String homeRedirect = null;
     private Map<String,Object> selfServiceLinks;
-    private boolean mfaEnabled;
-    private String mfaProviderName;
     private List<String> logoutRedirectWhitelist;
     private String logoutRedirectParameterName;
     private String logoutDefaultRedirectUrl;
@@ -66,6 +64,8 @@ public class IdentityZoneConfigurationBootstrap implements InitializingBean {
     private boolean accountChooserEnabled;
 
     private Collection<String> defaultUserGroups;
+
+    private Collection<String> allowedUserGroups;
 
     private IdentityZoneValidator validator = (config, mode) -> config;
     private Map<String, Object> branding;
@@ -91,8 +91,6 @@ public class IdentityZoneConfigurationBootstrap implements InitializingBean {
         definition.getSamlConfig().setDisableInResponseToCheck(disableSamlInResponseToCheck);
         definition.setIdpDiscoveryEnabled(idpDiscoveryEnabled);
         definition.setAccountChooserEnabled(accountChooserEnabled);
-        definition.getMfaConfig().setEnabled(mfaEnabled);
-        definition.getMfaConfig().setProviderName(mfaProviderName);
         definition.setDefaultIdentityProvider(defaultIdentityProvider);
 
         samlKeys = ofNullable(samlKeys).orElse(EMPTY_MAP);
@@ -133,6 +131,9 @@ public class IdentityZoneConfigurationBootstrap implements InitializingBean {
             definition.getUserConfig().setDefaultGroups(new LinkedList<>(defaultUserGroups));
         }
 
+        if (allowedUserGroups!=null) {
+            definition.getUserConfig().setAllowedGroups(new LinkedList<>(allowedUserGroups));
+        }
 
         identityZone.setConfig(definition);
 
@@ -142,22 +143,6 @@ public class IdentityZoneConfigurationBootstrap implements InitializingBean {
 
     public void setClientSecretPolicy(ClientSecretPolicy clientSecretPolicy) {
         this.clientSecretPolicy = clientSecretPolicy;
-    }
-
-    public void setMfaEnabled(boolean mfaEnabled) {
-        this.mfaEnabled = mfaEnabled;
-    }
-
-    public void setMfaProviderName(String mfaProviderName) {
-        this.mfaProviderName = mfaProviderName;
-    }
-
-    public String getMfaProviderName() {
-        return mfaProviderName;
-    }
-
-    public boolean isMfaEnabled()  {
-        return mfaEnabled;
     }
 
     public IdentityZoneConfigurationBootstrap setSamlKeys(Map<String, Map<String, String>> samlKeys) {
@@ -252,6 +237,10 @@ public class IdentityZoneConfigurationBootstrap implements InitializingBean {
 
     public void setDefaultUserGroups(Collection<String> defaultUserGroups) {
         this.defaultUserGroups = defaultUserGroups;
+    }
+
+    public void setAllowedUserGroups(Collection<String> allowedUserGroups) {
+        this.allowedUserGroups = allowedUserGroups;
     }
 
     public boolean isDisableSamlInResponseToCheck() {

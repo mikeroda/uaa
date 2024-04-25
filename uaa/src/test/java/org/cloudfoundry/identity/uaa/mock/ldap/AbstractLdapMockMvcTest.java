@@ -11,9 +11,6 @@ import org.cloudfoundry.identity.uaa.authentication.event.IdentityProviderAuthen
 import org.cloudfoundry.identity.uaa.authentication.event.IdentityProviderAuthenticationSuccessEvent;
 import org.cloudfoundry.identity.uaa.authentication.manager.DynamicZoneAwareAuthenticationManager;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
-import org.cloudfoundry.identity.uaa.mfa.GoogleMfaProviderConfig;
-import org.cloudfoundry.identity.uaa.mfa.JdbcMfaProviderProvisioning;
-import org.cloudfoundry.identity.uaa.mfa.MfaProvider;
 import org.cloudfoundry.identity.uaa.mock.util.InterceptingLogger;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.oauth.jwt.Jwt;
@@ -26,7 +23,6 @@ import org.cloudfoundry.identity.uaa.scim.ScimUser;
 import org.cloudfoundry.identity.uaa.scim.exception.ScimResourceAlreadyExistsException;
 import org.cloudfoundry.identity.uaa.scim.jdbc.JdbcScimGroupExternalMembershipManager;
 import org.cloudfoundry.identity.uaa.scim.jdbc.JdbcScimUserProvisioning;
-import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.test.InMemoryLdapServer;
 import org.cloudfoundry.identity.uaa.user.UaaUser;
 import org.cloudfoundry.identity.uaa.user.UaaUserDatabase;
@@ -55,7 +51,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.common.util.OAuth2Utils;
 import org.springframework.security.oauth2.common.util.RandomValueStringGenerator;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
@@ -73,12 +69,10 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-import static com.beust.jcommander.internal.Lists.newArrayList;
 import static java.util.Collections.EMPTY_LIST;
 import static org.cloudfoundry.identity.uaa.constants.OriginKeys.LDAP;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.CookieCsrfPostProcessor.cookieCsrf;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.createClient;
-import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.performMfaRegistrationInZone;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_PASSWORD;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_REFRESH_TOKEN;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -656,7 +650,7 @@ public abstract class AbstractLdapMockMvcTest {
 
         LdapIdentityProviderDefinition definition = provider.getConfig();
         // External groups will only appear as roles if they are whitelisted
-        definition.setExternalGroupsWhitelist(newArrayList("*"));
+        definition.setExternalGroupsWhitelist(Collections.singletonList("*"));
         // External groups are currently only stored in the db if StoreCustomAttributes is true
         definition.setStoreCustomAttributes(true);
         provider.setConfig(definition);
@@ -672,7 +666,7 @@ public abstract class AbstractLdapMockMvcTest {
         // so we put both of these scopes on the client.
         String clientId = "roles_test_client";
         createClient(getWebApplicationContext(),
-                new BaseClientDetails(clientId, null, "roles,openid", "password,refresh_token", null),
+                new UaaClientDetails(clientId, null, "roles,openid", "password,refresh_token", null),
                 zone.getZone().getIdentityZone()
         );
 
@@ -824,33 +818,6 @@ public abstract class AbstractLdapMockMvcTest {
                 .andExpect(redirectedUrl("/"));
 
     }
-
-    @Test
-    void testLdapAuthenticationWithMfa() throws Exception {
-        String zoneId = zone.getZone().getIdentityZone().getId();
-        // create mfa provider
-        MfaProvider<GoogleMfaProviderConfig> mfaProvider = new MfaProvider();
-        mfaProvider.setName(new AlphanumericRandomValueStringGenerator(5).generate());
-        mfaProvider.setType(MfaProvider.MfaProviderType.GOOGLE_AUTHENTICATOR);
-        mfaProvider.setIdentityZoneId(zone.getZone().getIdentityZone().getId());
-        mfaProvider.setConfig((GoogleMfaProviderConfig) new GoogleMfaProviderConfig().setIssuer("issuer"));
-        mfaProvider = getWebApplicationContext().getBean(JdbcMfaProviderProvisioning.class).create(mfaProvider, zoneId);
-        zone.getZone().getIdentityZone().getConfig().setMfaConfig(new MfaConfig().setEnabled(true).setProviderName(mfaProvider.getName()));
-        IdentityZone newZone = getWebApplicationContext().getBean(JdbcIdentityZoneProvisioning.class).update(zone.getZone().getIdentityZone());
-        assertEquals(mfaProvider.getName(), newZone.getConfig().getMfaConfig().getProviderName());
-        ResultActions actions = performMfaRegistrationInZone(
-                "marissa7",
-                "ldap7",
-                getMockMvc(),
-                host,
-                new String[]{"ext", "pwd"},
-                new String[]{"ext", "pwd", "mfa", "otp"}
-        );
-        actions
-                .andExpect(status().isOk())
-                .andExpect(view().name("home"));
-    }
-
 
     void testSuccessfulLogin() throws Exception {
         getMockMvc().perform(post("/login.do").accept(TEXT_HTML_VALUE)

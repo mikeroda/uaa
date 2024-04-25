@@ -12,7 +12,7 @@
  *******************************************************************************/
 package org.cloudfoundry.identity.uaa.zone;
 
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
 import org.cloudfoundry.identity.uaa.saml.SamlKey;
 import org.junit.After;
 import org.junit.Before;
@@ -31,15 +31,11 @@ import java.util.Map;
 import static java.util.Collections.EMPTY_MAP;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 
 @RunWith(Parameterized.class)
 public class GeneralIdentityZoneConfigurationValidatorTests {
 
     private IdentityZoneConfiguration zoneConfiguration;
-    private MfaConfigValidator mockMfaConfigValidator;
 
     @Parameterized.Parameters
     public static Object[][] parameters() {
@@ -202,7 +198,7 @@ public class GeneralIdentityZoneConfigurationValidatorTests {
     @BeforeClass
     public static void addBCProvider() {
         try {
-            Security.addProvider(new BouncyCastleProvider());
+            Security.addProvider(new BouncyCastleFipsProvider());
         } catch (SecurityException e) {
             e.printStackTrace();
             System.err.println("Ignoring provider error, may already be added.");
@@ -222,8 +218,7 @@ public class GeneralIdentityZoneConfigurationValidatorTests {
         samlConfig.setPrivateKeyPassword(legacyPassphrase);
         samlConfig.addKey("key-1", new SamlKey(key1, passphrase1, certificate1));
         samlConfig.addKey("key-2", new SamlKey(key2, passphrase2, certificate2));
-        mockMfaConfigValidator = mock(MfaConfigValidator.class);
-        validator = new GeneralIdentityZoneConfigurationValidator(mockMfaConfigValidator);
+        validator = new GeneralIdentityZoneConfigurationValidator();
         zoneConfiguration = new IdentityZoneConfiguration();
         BrandingInformation brandingInformation = new BrandingInformation();
         zoneConfiguration.setBranding(brandingInformation);
@@ -314,11 +309,12 @@ public class GeneralIdentityZoneConfigurationValidatorTests {
     }
 
     @Test
-    public void mfa_validation_exception_gets_thrown_back() throws Exception{
-        doThrow(new InvalidIdentityZoneConfigurationException("Invalid MFA Config")).when(mockMfaConfigValidator).validate(any(), any());
-
+    public void validate_isser_no_keys() throws Exception {
+        samlConfig.setKeys(EMPTY_MAP);
+        zone.getConfig().setIssuer("http://localhost/new");
+        assertNull(samlConfig.getActiveKeyId());
         expection.expect(InvalidIdentityZoneConfigurationException.class);
-        expection.expectMessage("Invalid MFA Config");
+        expection.expectMessage("You cannot set issuer value unless you have set your own signing key for this identity zone.");
         validator.validate(zone, mode);
     }
 

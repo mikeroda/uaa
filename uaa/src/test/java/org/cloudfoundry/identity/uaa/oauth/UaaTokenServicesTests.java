@@ -7,7 +7,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
-import org.bouncycastle.util.Strings;
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.approval.Approval;
 import org.cloudfoundry.identity.uaa.approval.JdbcApprovalStore;
@@ -24,6 +23,7 @@ import org.cloudfoundry.identity.uaa.user.JdbcUaaUserDatabase;
 import org.cloudfoundry.identity.uaa.user.UaaUser;
 import org.cloudfoundry.identity.uaa.util.TimeService;
 import org.cloudfoundry.identity.uaa.util.UaaTokenUtils;
+import org.cloudfoundry.identity.uaa.provider.NoSuchClientException;
 import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
 import org.joda.time.DateTime;
 import org.junit.jupiter.api.*;
@@ -36,7 +36,6 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.common.OAuth2AccessToken;
 import org.springframework.security.oauth2.provider.AuthorizationRequest;
-import org.springframework.security.oauth2.provider.NoSuchClientException;
 import org.springframework.security.oauth2.provider.OAuth2Authentication;
 import org.springframework.security.oauth2.provider.OAuth2Request;
 import org.springframework.security.oauth2.provider.TokenRequest;
@@ -157,7 +156,9 @@ class UaaTokenServicesTests {
             @AfterEach
             void removeAppender() {
                 LoggerContext context = (LoggerContext) LogManager.getContext(false);
-                context.getRootLogger().removeAppender(appender);
+                if (appender != null) {
+                    context.getRootLogger().removeAppender(appender);
+                }
             }
 
             @BeforeEach
@@ -230,7 +231,7 @@ class UaaTokenServicesTests {
 
     @Test
     void ensureJKUHeaderIsSetWhenBuildingAnAccessToken() {
-        AuthorizationRequest authorizationRequest = constructAuthorizationRequest(clientId, GRANT_TYPE_CLIENT_CREDENTIALS, Strings.split(clientScopes, ','));
+        AuthorizationRequest authorizationRequest = constructAuthorizationRequest(clientId, GRANT_TYPE_CLIENT_CREDENTIALS, clientScopes.split(","));
 
         OAuth2Authentication authentication = new OAuth2Authentication(authorizationRequest.createOAuth2Request(), null);
 
@@ -294,7 +295,7 @@ class UaaTokenServicesTests {
             OAuth2AccessToken refreshedToken = tokenServices.refreshAccessToken(this.refreshToken.getValue(), new TokenRequest(new HashMap<>(), "jku_test", Lists.newArrayList("openid", "user_attributes"), GRANT_TYPE_REFRESH_TOKEN));
 
             assertThat(refreshedToken, is(notNullValue()));
-            Map<String, Object> claims = UaaTokenUtils.getClaims(refreshedToken.getValue());
+            Map<String, Object> claims = UaaTokenUtils.getClaims(refreshedToken.getValue(), Map.class);
             assertThat(claims, hasEntry(ClaimConstants.CLIENT_AUTH_METHOD, CLIENT_AUTH_NONE));
         }
 
@@ -361,7 +362,7 @@ class UaaTokenServicesTests {
 
                 assertThat(refreshedToken, is(notNullValue()));
 
-                Map<String, Object> claims = UaaTokenUtils.getClaims(refreshedToken.getIdTokenValue());
+                Map<String, Object> claims = UaaTokenUtils.getClaims(refreshedToken.getIdTokenValue(), Map.class);
                 assertThat(claims.size(), greaterThan(0));
                 assertThat(claims, hasKey(ClaimConstants.ACR));
                 assertThat(claims.get(ClaimConstants.ACR), notNullValue());
@@ -478,7 +479,7 @@ class UaaTokenServicesTests {
             @MethodSource("org.cloudfoundry.identity.uaa.oauth.UaaTokenServicesTests#authenticationTestParams")
             void happyCase(List<String> amrs) {
                 setup(amrs);
-
+                assumeTrue(waitForClient("jku_test", 5), "Test client needs to be setup for this test");
                 CompositeToken refreshedToken = (CompositeToken) tokenServices.refreshAccessToken(
                         refreshToken.getValue(),
                         new TokenRequest(
@@ -488,7 +489,7 @@ class UaaTokenServicesTests {
 
                 assertThat(refreshedToken, is(notNullValue()));
 
-                Map<String, Object> claims = UaaTokenUtils.getClaims(refreshedToken.getIdTokenValue());
+                Map<String, Object> claims = UaaTokenUtils.getClaims(refreshedToken.getIdTokenValue(), Map.class);
                 assertThat(claims.size(), greaterThan(0));
                 assertThat(claims, hasKey(ClaimConstants.AMR));
                 assertThat(claims.get(ClaimConstants.AMR), notNullValue());
@@ -518,6 +519,7 @@ class UaaTokenServicesTests {
 
         @BeforeEach
         void init() {
+            assumeTrue(waitForClient(clientId, 3), "Test client jku_test not up yet");
             refreshTokenRequestData = new RefreshTokenRequestData(
                     GRANT_TYPE_AUTHORIZATION_CODE,
                     Sets.newHashSet("openid", "user_attributes"),

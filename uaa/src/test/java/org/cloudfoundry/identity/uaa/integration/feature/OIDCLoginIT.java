@@ -17,6 +17,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import org.cloudfoundry.identity.uaa.ServerRunning;
 import org.cloudfoundry.identity.uaa.account.UserInfoResponse;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
+import org.cloudfoundry.identity.uaa.integration.endpoints.SamlLogoutAuthSourceEndpoint;
 import org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils;
 import org.cloudfoundry.identity.uaa.integration.util.ScreenshotOnFail;
 import org.cloudfoundry.identity.uaa.oauth.jwt.Jwt;
@@ -46,7 +47,6 @@ import org.junit.runner.RunWith;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Cookie;
 import org.openqa.selenium.WebDriver;
-import org.opensaml.saml2.core.AuthnContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -55,7 +55,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.client.test.TestAccounts;
 import org.springframework.security.oauth2.common.DefaultOAuth2AccessToken;
 import org.springframework.security.oauth2.common.util.RandomValueStringGenerator;
-import org.springframework.security.oauth2.provider.client.BaseClientDetails;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.util.LinkedMultiValueMap;
@@ -78,6 +78,7 @@ import java.util.List;
 import java.util.Map;
 
 
+import static org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils.SAML_AUTH_SOURCE;
 import static org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils.SIMPLESAMLPHP_LOGIN_PROMPT_XPATH_EXPR;
 import static org.cloudfoundry.identity.uaa.integration.util.IntegrationTestUtils.isMember;
 import static org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants.SUB;
@@ -86,6 +87,7 @@ import static org.cloudfoundry.identity.uaa.provider.ExternalIdentityProviderDef
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertEquals;
@@ -124,6 +126,8 @@ public class OIDCLoginIT {
     @Autowired
     TestClient testClient;
 
+    private static final String PASSWORD_AUTHN_CTX = "urn:oasis:names:tc:SAML:2.0:ac:classes:Password";
+
     private ServerRunning serverRunning = ServerRunning.isRunning();
 
     private IdentityZone zone;
@@ -132,7 +136,7 @@ public class OIDCLoginIT {
     private String zoneUrl;
     private IdentityProvider<AbstractExternalOAuthIdentityProviderDefinition> identityProvider;
     private String clientCredentialsToken;
-    private BaseClientDetails zoneClient;
+    private UaaClientDetails zoneClient;
     private ScimGroup createdGroup;
     private RestTemplate identityClient;
 
@@ -179,6 +183,7 @@ public class OIDCLoginIT {
         config.setTokenKeyUrl(new URL(urlBase + "/token_key"));
         config.setIssuer(urlBase + "/oauth/token");
         config.setUserInfoUrl(new URL(urlBase + "/userinfo"));
+        config.setLogoutUrl(new URL(urlBase + "/logout.do"));
 
         config.setShowLinkText(true);
         config.setLinkText("My OIDC Provider");
@@ -202,7 +207,7 @@ public class OIDCLoginIT {
         IntegrationTestUtils.mapExternalGroup(adminToken, subdomain, baseUrl, createdGroupExternalMapping);
 
 
-        zoneClient = new BaseClientDetails(new RandomValueStringGenerator().generate(), null, "openid,user_attributes", "authorization_code,client_credentials", "uaa.admin,scim.read,scim.write,uaa.resource", zoneUrl);
+        zoneClient = new UaaClientDetails(new RandomValueStringGenerator().generate(), null, "openid,user_attributes", "authorization_code,client_credentials", "uaa.admin,scim.read,scim.write,uaa.resource", zoneUrl);
         zoneClient.setClientSecret("secret");
         zoneClient.setAutoApproveScopes(Collections.singleton("true"));
         zoneClient = IntegrationTestUtils.createClientAsZoneAdmin(clientCredentialsToken, baseUrl, zone.getId(), zoneClient);
@@ -231,7 +236,10 @@ public class OIDCLoginIT {
     }
 
     private void doLogout(String zoneUrl) {
-        for (String url : Arrays.asList(IntegrationTestUtils.SIMPLESAMLPHP_UAA_ACCEPTANCE + "/module.php/core/authenticate.php?as=example-userpass&logout", baseUrl + "/logout.do", zoneUrl + "/logout.do")) {
+        SamlLogoutAuthSourceEndpoint.logoutAuthSource_goesToSamlWelcomePage(webDriver, IntegrationTestUtils.SIMPLESAMLPHP_UAA_ACCEPTANCE, SAML_AUTH_SOURCE);
+        webDriver.manage().deleteAllCookies();
+
+        for (String url : Arrays.asList(baseUrl + "/logout.do", zoneUrl + "/logout.do")) {
             webDriver.get(url);
             webDriver.manage().deleteAllCookies();
         }
@@ -416,7 +424,7 @@ public class OIDCLoginIT {
         serverRunning.setHostName("localhost");
 
         String clientId = "client" + new RandomValueStringGenerator(5).generate();
-        BaseClientDetails client = new BaseClientDetails(clientId, null, "openid", GRANT_TYPE_AUTHORIZATION_CODE, "openid", baseUrl);
+        UaaClientDetails client = new UaaClientDetails(clientId, null, "openid", GRANT_TYPE_AUTHORIZATION_CODE, "openid", baseUrl);
         client.setClientSecret("clientsecret");
         client.setAutoApproveScopes(Collections.singletonList("true"));
         IntegrationTestUtils.createClient(adminToken, baseUrl, client);
@@ -475,7 +483,7 @@ public class OIDCLoginIT {
             webDriver.findElement(By.name("username")).clear();
             webDriver.findElement(By.name("username")).sendKeys("marissa6");
             webDriver.findElement(By.name("password")).sendKeys("saml6");
-            webDriver.findElement(By.xpath("//input[@value='Login']")).click();
+            webDriver.findElement(By.id("submit_button")).click();
 
             assertThat(webDriver.getCurrentUrl(), containsString(zoneUrl));
             assertThat(webDriver.findElement(By.cssSelector("h1")).getText(), containsString("Where to?"));
@@ -508,7 +516,7 @@ public class OIDCLoginIT {
             assertNotNull("id_token should contain ACR claim", claims.get(ClaimConstants.ACR));
             Map<String, Object> acr = (Map<String, Object>) claims.get(ClaimConstants.ACR);
             assertNotNull("acr claim should contain values attribute", acr.get("values"));
-            assertThat((List<String>) acr.get("values"), containsInAnyOrder(AuthnContext.PASSWORD_AUTHN_CTX));
+            assertThat((List<String>) acr.get("values"), containsInAnyOrder(PASSWORD_AUTHN_CTX));
 
             UserInfoResponse userInfo = IntegrationTestUtils.getUserInfo(zoneUrl, authCodeTokenResponse.get("access_token"));
 
@@ -536,7 +544,7 @@ public class OIDCLoginIT {
 
     @Test
     public void testResponseTypeRequired() {
-        BaseClientDetails uaaClient = new BaseClientDetails(new RandomValueStringGenerator().generate(), null, "openid,user_attributes", "authorization_code,client_credentials", "uaa.admin,scim.read,scim.write,uaa.resource", baseUrl);
+        UaaClientDetails uaaClient = new UaaClientDetails(new RandomValueStringGenerator().generate(), null, "openid,user_attributes", "authorization_code,client_credentials", "uaa.admin,scim.read,scim.write,uaa.resource", baseUrl);
         uaaClient.setClientSecret("secret");
         uaaClient.setAutoApproveScopes(Collections.singleton("true"));
         uaaClient = IntegrationTestUtils.createClient(clientCredentialsToken, baseUrl, uaaClient);
@@ -551,6 +559,32 @@ public class OIDCLoginIT {
 
         assertThat(webDriver.getCurrentUrl(), containsString("error=invalid_request"));
         assertThat(webDriver.getCurrentUrl(), containsString("error_description=Missing%20response_type%20in%20authorization%20request"));
+    }
+
+    @Test
+    public void successfulUaaLogoutTriggersExternalOIDCProviderLogout_whenConfiguredTo() {
+        identityProvider.getConfig().setPerformRpInitiatedLogout(true);
+        updateProvider();
+
+        validateSuccessfulOIDCLogin(zoneUrl, testAccounts.getUserName(), testAccounts.getPassword());
+
+        String externalOIDCProviderLoginPage = baseUrl;
+        webDriver.get(externalOIDCProviderLoginPage);
+        Assert.assertThat("Did not land on the external OIDC provider login page (as an unauthenticated user).",
+                webDriver.getCurrentUrl(), endsWith("/login"));
+    }
+
+    @Test
+    public void successfulUaaLogoutDoesNotTriggerExternalOIDCProviderLogout_whenConfiguredNotTo() {
+        identityProvider.getConfig().setPerformRpInitiatedLogout(false);
+        updateProvider();
+
+        validateSuccessfulOIDCLogin(zoneUrl, testAccounts.getUserName(), testAccounts.getPassword());
+
+        String externalOIDCProviderLoginPage = baseUrl;
+        webDriver.get(externalOIDCProviderLoginPage);
+        Assert.assertThat("Did not land on the external OIDC provider home page (as an authenticated user).",
+                webDriver.getPageSource(), containsString("Where to?"));
     }
 
     private String getRefreshTokenResponse(ServerRunning serverRunning, String refreshToken) {
