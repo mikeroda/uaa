@@ -1,33 +1,29 @@
 package org.cloudfoundry.identity.uaa.oauth;
 
 import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
-import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
+import org.cloudfoundry.identity.uaa.oauth.common.exceptions.RedirectMismatchException;
+import org.cloudfoundry.identity.uaa.oauth.common.util.OAuth2Utils;
+import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
+import org.cloudfoundry.identity.uaa.oauth.provider.endpoint.RedirectResolver;
 import org.cloudfoundry.identity.uaa.provider.NoSuchClientException;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.oauth2.common.exceptions.RedirectMismatchException;
-import org.springframework.security.oauth2.common.util.OAuth2Utils;
-import org.springframework.security.oauth2.provider.ClientDetails;
-import org.springframework.security.oauth2.provider.endpoint.RedirectResolver;
 import org.springframework.security.web.authentication.session.SessionAuthenticationException;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.servlet.ModelAndView;
 
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
+import java.util.stream.Stream;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_AUTHORIZATION_CODE;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
@@ -35,7 +31,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
-@RunWith(Parameterized.class)
 public class UaaAuthorizationEndpointParamaterizedTest {
 
     private static final String REDIRECT_URI = "http://sub.domain.com/callback?oauth=true";
@@ -47,32 +42,16 @@ public class UaaAuthorizationEndpointParamaterizedTest {
     private MockHttpServletResponse response;
     private MultitenantClientServices clientDetailsService;
     private RedirectResolver redirectResolver;
-    private OpenIdSessionStateCalculator calculator;
 
-    private final String responseType;
-    private final String redirectUrl;
+    private String redirectUrl;
 
-    public UaaAuthorizationEndpointParamaterizedTest(String responseType) {
-        this.responseType = responseType;
+    public void initUaaAuthorizationEndpointParamaterizedTest(String responseType) {
         redirectUrl = REDIRECT_URI;
-    }
 
-    @Parameterized.Parameters(name = "{index}: {0}")
-    public static Collection<Object[]> parameters() {
-        return Arrays.asList(new Object[][]{
-                {"code"},
-                {"token"},
-                {"id_token"},
-                {"token id_token"}
-        });
-    }
-
-    @Before
-    public void setup() {
         client = new UaaClientDetails("id", "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", redirectUrl);
         clientDetailsService = mock(MultitenantClientServices.class);
         redirectResolver = mock(RedirectResolver.class);
-        calculator = mock(OpenIdSessionStateCalculator.class);
+        OpenIdSessionStateCalculator calculator = mock(OpenIdSessionStateCalculator.class);
 
         String zoneID = IdentityZoneHolder.get().getId();
         when(clientDetailsService.loadClientByClientId(eq(client.getClientId()), eq(zoneID))).thenReturn(client);
@@ -86,11 +65,11 @@ public class UaaAuthorizationEndpointParamaterizedTest {
                 null,
                 null,
                 null,
-                calculator,
                 null,
                 clientDetailsService,
                 null,
                 null);
+        uaaAuthorizationEndpoint.setOpenIdSessionStateCalculator(calculator);
 
         request = new MockHttpServletRequest("GET", "/oauth/authorize");
         request.setParameter(OAuth2Utils.CLIENT_ID, client.getClientId());
@@ -98,39 +77,58 @@ public class UaaAuthorizationEndpointParamaterizedTest {
         response = new MockHttpServletResponse();
     }
 
-    @Test
-    public void test_missing_redirect_uri() throws Exception {
-        client.setRegisteredRedirectUri(Collections.emptySet());
-        uaaAuthorizationEndpoint.commence(request, response, authException);
-        assertEquals(HttpStatus.BAD_REQUEST.value(), response.getStatus());
+    public static Stream<Arguments> parameters() {
+        return Stream.of(
+                arguments("code"),
+                arguments("token"),
+                arguments("id_token"),
+                arguments("token id_token")
+        );
     }
 
-    @Test
-    public void test_client_not_found() throws Exception {
+    @MethodSource("parameters")
+    @ParameterizedTest(name = "{index}: {0}")
+    void missing_redirect_uri(String responseType) throws Exception {
+        initUaaAuthorizationEndpointParamaterizedTest(responseType);
+        client.setRegisteredRedirectUri(Collections.emptySet());
+        uaaAuthorizationEndpoint.commence(request, response, authException);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+    }
+
+    @MethodSource("parameters")
+    @ParameterizedTest(name = "{index}: {0}")
+    void client_not_found(String responseType) throws Exception {
+        initUaaAuthorizationEndpointParamaterizedTest(responseType);
         reset(clientDetailsService);
         when(clientDetailsService.loadClientByClientId(anyString(), anyString())).thenThrow(new NoSuchClientException("not found"));
         uaaAuthorizationEndpoint.commence(request, response, authException);
-        assertEquals(HttpStatus.BAD_REQUEST.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
     }
 
-    @Test
-    public void test_redirect_mismatch() throws Exception {
+    @MethodSource("parameters")
+    @ParameterizedTest(name = "{index}: {0}")
+    void redirect_mismatch(String responseType) throws Exception {
+        initUaaAuthorizationEndpointParamaterizedTest(responseType);
         request.setParameter(OAuth2Utils.REDIRECT_URI, HTTP_SOME_OTHER_SITE_CALLBACK);
         uaaAuthorizationEndpoint.commence(request, response, authException);
-        assertEquals(HttpStatus.BAD_REQUEST.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
     }
 
-    @Test
-    public void test_redirect_contains_error() throws Exception {
+    @MethodSource("parameters")
+    @ParameterizedTest(name = "{index}: {0}")
+    void redirect_contains_error(String responseType) throws Exception {
+        initUaaAuthorizationEndpointParamaterizedTest(responseType);
         request.setParameter(OAuth2Utils.REDIRECT_URI, redirectUrl);
         uaaAuthorizationEndpoint.commence(request, response, authException);
-        assertEquals(HttpStatus.FOUND.value(), response.getStatus());
-        assertTrue(response.getHeader("Location").contains("error=login_required"));
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.FOUND.value());
+        assertThat(response.getHeader("Location")).contains("error=login_required");
     }
 
-    @Test
-    public void test_redirect_honors_ant_matcher() throws Exception {
-        UaaClientDetails client = new UaaClientDetails("ant", "", "openid", "implicit", "", "http://example.com/**");
+    @MethodSource("parameters")
+    @ParameterizedTest(name = "{index}: {0}")
+    void redirect_honors_ant_matcher(String responseType) throws Exception {
+        initUaaAuthorizationEndpointParamaterizedTest(responseType);
+        client = new UaaClientDetails("ant", "", "openid", "implicit", "", "http://example.com/**");
         request.setParameter(OAuth2Utils.REDIRECT_URI, "http://example.com/some/path");
         request.setParameter(OAuth2Utils.CLIENT_ID, client.getClientId());
         String zoneID = IdentityZoneHolder.get().getId();
@@ -141,15 +139,17 @@ public class UaaAuthorizationEndpointParamaterizedTest {
         uaaAuthorizationEndpoint.commence(request, response, authException);
     }
 
-    @Test
-    public void test_authorization_exception() throws Exception {
+    @MethodSource("parameters")
+    @ParameterizedTest(name = "{index}: {0}")
+    void authorization_exception(String responseType) throws Exception {
+        initUaaAuthorizationEndpointParamaterizedTest(responseType);
         RedirectMismatchException redirectMismatchException = new RedirectMismatchException("error");
         ServletWebRequest servletWebRequest = mock(ServletWebRequest.class);
         MockHttpServletResponse mockHttpServletResponse = new MockHttpServletResponse();
         when(servletWebRequest.getResponse()).thenReturn(mockHttpServletResponse);
         ModelAndView modelAndView = uaaAuthorizationEndpoint.handleOAuth2Exception(redirectMismatchException, servletWebRequest);
-        assertNotNull(modelAndView);
-        assertFalse(modelAndView.getModelMap().isEmpty());
-        assertEquals("forward:/oauth/error", modelAndView.getViewName());
+        assertThat(modelAndView).isNotNull();
+        assertThat(modelAndView.getModelMap()).isNotEmpty();
+        assertThat(modelAndView.getViewName()).isEqualTo("forward:/oauth/error");
     }
 }

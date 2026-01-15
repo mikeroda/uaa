@@ -1,25 +1,25 @@
 package org.cloudfoundry.identity.uaa.user;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-public class UaaUserPrototypeTest {
+class UaaUserPrototypeTest {
 
     @Test
-    public void testGetPassword() {
+    void getPassword() {
         UaaUserPrototype prototype = new UaaUserPrototype()
                 .withPassword("pass");
-        assertEquals("pass", prototype.getPassword());
+        assertThat(prototype.getPassword()).isEqualTo("pass");
     }
 
     @Test
-    public void testGetUserWithId() {
+    void getUserWithId() {
         UaaUserPrototype prototype = new UaaUserPrototype()
                 .withUsername("name")
                 .withEmail("email")
                 .withPassword("pass");
         UaaUser userWithId = new UaaUser(prototype).id("new-id");
-        assertEquals("new-id", userWithId.getId());
+        assertThat(userWithId.getId()).isEqualTo("new-id");
     }
 }

@@ -4,80 +4,78 @@ import com.nimbusds.jose.jwk.JWKParameterNames;
 import org.cloudfoundry.identity.uaa.oauth.InvalidSignatureException;
 import org.cloudfoundry.identity.uaa.oauth.KeyInfo;
 import org.cloudfoundry.identity.uaa.oauth.KeyInfoBuilder;
+import org.cloudfoundry.identity.uaa.oauth.common.exceptions.InvalidTokenException;
 import org.cloudfoundry.identity.uaa.oauth.jwk.JsonWebKey;
 import org.cloudfoundry.identity.uaa.oauth.token.Claims;
 import org.cloudfoundry.identity.uaa.util.UaaTokenUtils;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
-import org.springframework.security.oauth2.common.exceptions.InvalidTokenException;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
 import static org.cloudfoundry.identity.uaa.test.ModelTestUtils.getResourceAsString;
 import static org.cloudfoundry.identity.uaa.util.UaaStringUtils.DEFAULT_UAA_URL;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
 
-public class JwtHelperTest {
+class JwtHelperTest {
     private KeyInfo keyInfo;
 
     private static final String certificate = getResourceAsString(JwtHelperTest.class, "certificate.pem");
     private static final String privatekey = getResourceAsString(JwtHelperTest.class, "privatekey.pem");
 
-    @Before
-    public void setUp() {
+    @BeforeEach
+    void setUp() {
         keyInfo = KeyInfoBuilder.build("testKid", "symmetricKey", "http://localhost/uaa");
     }
 
     @Test
-    public void testKidInHeader() {
+    void kidInHeader() {
         Jwt jwt = JwtHelper.encode(Map.of("sub", "testJwtContent"), keyInfo);
-        assertEquals("testKid", jwt.getHeader().getKid());
+        assertThat(jwt.getHeader().getKid()).isEqualTo("testKid");
 
         jwt = JwtHelper.decode(jwt.getEncoded());
-        assertEquals("testKid", jwt.getHeader().getKid());
+        assertThat(jwt.getHeader().getKid()).isEqualTo("testKid");
     }
 
     @Test
-    public void jwtHeaderShouldContainJkuInTheHeader() {
+    void jwtHeaderShouldContainJkuInTheHeader() {
         Jwt jwt = JwtHelper.encode(Map.of("sub", "testJwtContent"), keyInfo);
-        assertEquals("https://localhost/uaa/token_keys", jwt.getHeader().getJku());
+        assertThat(jwt.getHeader().getJku()).isEqualTo("https://localhost/uaa/token_keys");
     }
 
     @Test
-    public void jwtHeaderShouldNotContainJkuInTheHeaderIfCertificateDefined() {
+    void jwtHeaderShouldNotContainJkuInTheHeaderIfCertificateDefined() {
         KeyInfo rsaKeyInfo = KeyInfoBuilder.build("key-id-1", privatekey, "http://localhost/uaa", "RS256", certificate);
         Jwt jwt = JwtHelper.encodePlusX5t(Map.of("sub", "testJwtContent"), rsaKeyInfo, rsaKeyInfo.verifierCertificate().orElse(null));
-        assertNull(jwt.getHeader().getJku());
-        assertEquals("RkckJulawIoaTm0iaziJBwFh7Nc", jwt.getHeader().getX5t());
+        assertThat(jwt.getHeader().getJku()).isNull();
+        assertThat(jwt.getHeader().getX5t()).isEqualTo("RkckJulawIoaTm0iaziJBwFh7Nc");
     }
 
     @Test
-    public void testAudClaimTypes() {
+    void audClaimTypes() {
         Jwt audSingle = JwtHelper.encode(Map.of("sub", "subject", "aud", "single"), keyInfo);
         Jwt audArray = JwtHelper.encode(Map.of("sub", "subject", "aud", Arrays.asList("one")), keyInfo);
         Jwt audArrayThree = JwtHelper.encode(Map.of("sub", "subject", "aud", Arrays.asList("one", "two", "three")), keyInfo);
 
         Claims claimSingle = UaaTokenUtils.getClaimsFromTokenString(audSingle.getEncoded());
-        assertNotNull(claimSingle);
-        assertEquals(Arrays.asList("single"), claimSingle.getAud());
+        assertThat(claimSingle).isNotNull();
+        assertThat(claimSingle.getAud()).isEqualTo(Arrays.asList("single"));
 
         Claims claimArray = UaaTokenUtils.getClaimsFromTokenString(audArray.getEncoded());
-        assertNotNull(claimArray);
-        assertEquals(Arrays.asList("one"), claimArray.getAud());
+        assertThat(claimArray).isNotNull();
+        assertThat(claimArray.getAud()).isEqualTo(Arrays.asList("one"));
 
         Claims claimArrayThree = UaaTokenUtils.getClaimsFromTokenString(audArrayThree.getEncoded());
-        assertNotNull(claimArrayThree);
-        assertEquals(Arrays.asList("one", "two", "three"), claimArrayThree.getAud());
+        assertThat(claimArrayThree).isNotNull();
+        assertThat(claimArrayThree.getAud()).isEqualTo(Arrays.asList("one", "two", "three"));
     }
 
     @Test
-    public void testLegacyHmacVerify() {
+    void legacyHmacVerify() {
         String kid = "legacy-token-key";
         String keyValue = "tokenKey";
         HashMap key = new HashMap();
@@ -88,28 +86,28 @@ public class JwtHelperTest {
         SignatureVerifier cs = new SignatureVerifier(jsonWebKey);
         KeyInfo hmacKeyInfo = new KeyInfo(kid, keyValue, DEFAULT_UAA_URL);
         Jwt legacySignature = JwtHelper.encode(Map.of("sub", "subject", "aud", "single"), hmacKeyInfo);
-        assertNotNull(legacySignature);
+        assertThat(legacySignature).isNotNull();
         Jwt legacyVerify = JwtHelper.decode(legacySignature.getEncoded());
-        assertNotNull(legacyVerify);
+        assertThat(legacyVerify).isNotNull();
         legacyVerify.verifySignature(cs);
-        assertThrows(InvalidSignatureException.class, () -> legacyVerify.verifySignature(keyInfo.getVerifier()));
+        assertThatExceptionOfType(InvalidSignatureException.class).isThrownBy(() -> legacyVerify.verifySignature(keyInfo.getVerifier()));
         key.put("value", "wrong");
-        assertThrows(InvalidSignatureException.class, () -> legacyVerify.verifySignature(new SignatureVerifier(new JsonWebKey(key))));
+        assertThatExceptionOfType(InvalidSignatureException.class).isThrownBy(() -> legacyVerify.verifySignature(new SignatureVerifier(new JsonWebKey(key))));
     }
 
     @Test
-    public void testLegacyHmacFailed() {
-        assertThrows(InvalidSignatureException.class, () -> UaaMacSigner.verify("x", null));
+    void legacyHmacFailed() {
+        assertThatExceptionOfType(InvalidSignatureException.class).isThrownBy(() -> UaaMacSigner.verify("x", null));
     }
 
     @Test
-    public void testJwtInvalidPayload() {
-        assertThrows(InvalidTokenException.class, () -> JwtHelper.encode(null, keyInfo));
+    void jwtInvalidPayload() {
+        assertThatExceptionOfType(InvalidTokenException.class).isThrownBy(() -> JwtHelper.encode(null, keyInfo));
     }
 
     @Test
-    public void testJwtInvalidContent() {
-        assertThrows(InvalidTokenException.class, () -> JwtHelper.decode("invalid"));
-        assertThrows(InsufficientAuthenticationException.class, () -> JwtHelper.decode(""));
+    void jwtInvalidContent() {
+        assertThatExceptionOfType(InvalidTokenException.class).isThrownBy(() -> JwtHelper.decode("invalid"));
+        assertThatExceptionOfType(InsufficientAuthenticationException.class).isThrownBy(() -> JwtHelper.decode(""));
     }
 }

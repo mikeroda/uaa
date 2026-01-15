@@ -1,5 +1,6 @@
 package org.cloudfoundry.identity.uaa.util;
 
+import jakarta.servlet.http.Cookie;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,15 +8,18 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import org.springframework.web.util.InvalidUrlException;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.util.UriUtils;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
+
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.HashMap;
@@ -25,17 +29,19 @@ import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.regex.Pattern;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Collections.emptyList;
 import static java.util.Optional.ofNullable;
 import static org.springframework.util.StringUtils.hasText;
 import static org.springframework.util.StringUtils.hasLength;
 
 public abstract class UaaUrlUtils {
-    private UaaUrlUtils() {}
+    private UaaUrlUtils() {
+    }
 
     /** Pattern that matches valid subdomains.
-    *  According to https://tools.ietf.org/html/rfc3986#section-3.2.2
-    */
+     *  According to <a href="https://tools.ietf.org/html/rfc3986#section-3.2.2">rfc3986 §3.2.2</a>
+     */
     private static final Pattern VALID_SUBDOMAIN_PATTERN = Pattern.compile("([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])");
     private static final Logger s_logger = LoggerFactory.getLogger(
             UaaUrlUtils.class);
@@ -112,10 +118,9 @@ public abstract class UaaUrlUtils {
 
         for (String pattern : ofNullable(redirectUris).orElse(emptyList())) {
             if (matcher.match(pattern, requestedRedirectUri)) {
-                if ( (!pattern.contains("*") && !pattern.contains("?")) || matchHost(pattern, requestedRedirectUri, matcher)) {
+                if ((!pattern.contains("*") && !pattern.contains("?")) || matchHost(pattern, requestedRedirectUri, matcher)) {
                     return requestedRedirectUri;
-                }
-                else {
+                } else {
                     s_logger.warn(
                             "The URI pattern matched but the hostname pattern did not. Denying the requested redirect URI: whitelisted-pattern='{}' requested-redirect-uri='{}'",
                             pattern, requestedRedirectUri);
@@ -156,7 +161,9 @@ public abstract class UaaUrlUtils {
             hostnameFromPattern = currentToken;
             break;
         }
-        if (hostnameFromPattern == null) return false;
+        if (hostnameFromPattern == null) {
+            return false;
+        }
 
         int colonLocation = hostnameFromPattern.indexOf(':');
         if (colonLocation > 0) {
@@ -167,7 +174,19 @@ public abstract class UaaUrlUtils {
     }
 
     public static String getHostForURI(String uri) {
-        return UriComponentsBuilder.fromHttpUrl(uri).build().getHost();
+        if (isUrl(uri)) {
+            return UriComponentsBuilder.fromUriString(uri).build().getHost();
+        } else {
+            //spring-web 5.3 used to throw an IllegalArgumentException if the URL wasn't valid.
+            throw new IllegalArgumentException("[" + uri + "] is not a valid HTTP URL");
+        }
+    }
+
+    public static UriComponentsBuilder fromUriString(String uri) {
+        if (!isUrl(uri)) {
+            throw new InvalidUrlException(uri + " is not a valid URL");
+        }
+        return UriComponentsBuilder.fromUriString(uri);
     }
 
     public static String getBaseURL(HttpServletRequest request) {
@@ -208,9 +227,9 @@ public abstract class UaaUrlUtils {
             return false;
         }
         try {
-            new URL(url);
+            new URL(url).toURI();
             return true;
-        } catch (MalformedURLException e) {
+        } catch (MalformedURLException | URISyntaxException e) {
             return false;
         }
     }
@@ -224,7 +243,7 @@ public abstract class UaaUrlUtils {
     public static String addFragmentComponent(String urlString, String component) {
         URI uri = URI.create(urlString);
         UriComponentsBuilder builder = UriComponentsBuilder.fromUri(uri);
-        builder.fragment(hasText(uri.getFragment()) ? ( uri.getFragment() + "&" + component ) : component);
+        builder.fragment(hasText(uri.getFragment()) ? (uri.getFragment() + "&" + component) : component);
         return builder.build().toUriString();
     }
 
@@ -234,9 +253,9 @@ public abstract class UaaUrlUtils {
         }
 
         subdomain = subdomain.trim();
-        subdomain = subdomain.endsWith(".") ? subdomain : ( subdomain + "." );
+        subdomain = subdomain.endsWith(".") ? subdomain : (subdomain + ".");
 
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url);
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url);
         builder.host(subdomain + builder.build().getHost());
         return builder.build().toUriString();
     }
@@ -244,7 +263,7 @@ public abstract class UaaUrlUtils {
     public static String getSubdomain(String subdomain) {
         if (hasText(subdomain)) {
             subdomain = subdomain.trim();
-            subdomain = subdomain.endsWith(".") ? subdomain : ( subdomain + "." );
+            subdomain = subdomain.endsWith(".") ? subdomain : (subdomain + ".");
         }
         return subdomain;
     }
@@ -271,7 +290,7 @@ public abstract class UaaUrlUtils {
             pathInfo = UaaStringUtils.EMPTY_STRING;
         }
 
-        return String.format("%s%s", servletPath, pathInfo);
+        return "%s%s".formatted(servletPath, pathInfo);
     }
 
     public static boolean uriHasMatchingHost(String uri, String hostname) {
@@ -308,6 +327,17 @@ public abstract class UaaUrlUtils {
         return uriComponentsBuilder.build().toString();
     }
 
+    public static String urlEncode(String inValue) throws IllegalArgumentException {
+        String out;
+        out = URLEncoder.encode(inValue, UTF_8);
+        return out;
+    }
+
+    public static Cookie createSavedCookie(String userId, Object value) {
+        String cookieValue = ObjectUtils.isEmpty(value) ? UaaStringUtils.EMPTY_STRING : urlEncode(JsonUtils.writeValueAsString(value));
+        return new Cookie("Saved-Account-%s".formatted(urlEncode(userId)), cookieValue);
+    }
+
     private static String decodeUriPath(final String path) {
         if (path == null) {
             return null;
@@ -325,5 +355,32 @@ public abstract class UaaUrlUtils {
         }
 
         throw new IllegalArgumentException("Aborted url decoding for repeatedly encoded path");
+    }
+
+    /**
+     * Normalizes a URL for port comparison by removing standard ports (80 for HTTP, 443 for HTTPS).
+     * This ensures that URLs like "http://example.com" and "http://example.com:80" are treated as equivalent.
+     *
+     * @param url the URL to normalize
+     * @return the normalized URL with standard ports removed, or the original URL if malformed
+     */
+    public static String normalizeUrlForPortComparison(String url) {
+        if (url == null) {
+            return null;
+        }
+        try {
+            URI uri = new URI(url);
+            int port = uri.getPort();
+            String scheme = uri.getScheme();
+
+            if (("http".equalsIgnoreCase(scheme) && port == 80) || 
+                ("https".equalsIgnoreCase(scheme) && port == 443)) {
+                return new URI(scheme, uri.getUserInfo(), uri.getHost(), -1, 
+                              uri.getPath(), uri.getQuery(), uri.getFragment()).toString();
+            }
+        } catch (Exception ignored) {
+            // ignore
+        }
+        return url;
     }
 }

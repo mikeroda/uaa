@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ * *****************************************************************************
  * Cloud Foundry
  * Copyright (c) [2009-2016] Pivotal Software, Inc. All Rights Reserved.
  * <p>
@@ -27,16 +28,24 @@ import static java.util.Collections.emptyMap;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class OIDCIdentityProviderDefinition extends AbstractExternalOAuthIdentityProviderDefinition<OIDCIdentityProviderDefinition>
-implements Cloneable {
+        implements Cloneable {
     private URL discoveryUrl;
-    private boolean passwordGrantEnabled = false;
-    private boolean setForwardHeader = false;
+    // Enable Resource Owner Password Grant flow for this identity provider.
+    private boolean passwordGrantEnabled;
+    // Set X-Forward-For header in Password Grant request to this identity provider.
+    private boolean setForwardHeader;
+    // Enable JWT Bearer Token Exchange Grant flow for this identity provider.
+    private Boolean tokenExchangeEnabled;
+    // Omit id_token_hint parameter in logout requests to this identity provider.
+    private Boolean omitIdTokenHintOnLogout;
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private List<Prompt> prompts = null;
+    private List<Prompt> prompts;
+    // Enables private_key_jwt towards identity provider.
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Object jwtClientAuthentication;
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private Map<String, String> additionalAuthzParameters = null;
+    // Add additional parameters in request towards identity provider.
+    private Map<String, String> additionalAuthzParameters;
 
     public URL getDiscoveryUrl() {
         return discoveryUrl;
@@ -85,7 +94,24 @@ implements Cloneable {
     }
 
     public void setAdditionalAuthzParameters(final Map<String, String> additonalAuthzParameters) {
-        this.additionalAuthzParameters = new HashMap<>(additonalAuthzParameters!=null?additonalAuthzParameters: emptyMap());
+        this.additionalAuthzParameters = new HashMap<>(additonalAuthzParameters != null ? additonalAuthzParameters : emptyMap());
+    }
+
+
+    public Boolean isTokenExchangeEnabled() {
+        return tokenExchangeEnabled;
+    }
+
+    public void setTokenExchangeEnabled(Boolean tokenExchangeEnabled) {
+        this.tokenExchangeEnabled = tokenExchangeEnabled;
+    }
+
+    public Boolean isOmitIdTokenHintOnLogout() {
+        return omitIdTokenHintOnLogout;
+    }
+
+    public void setOmitIdTokenHintOnLogout(Boolean omitIdTokenHintOnLogout) {
+        this.omitIdTokenHintOnLogout = omitIdTokenHintOnLogout;
     }
 
     @Override
@@ -95,16 +121,36 @@ implements Cloneable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        if (!super.equals(o)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
 
         OIDCIdentityProviderDefinition that = (OIDCIdentityProviderDefinition) o;
 
-        if (this.passwordGrantEnabled != that.passwordGrantEnabled) return false;
-        if (this.setForwardHeader != that.setForwardHeader) return false;
-        if (!Objects.equals(this.jwtClientAuthentication, that.jwtClientAuthentication)) return false;
-        if (!Objects.equals(this.additionalAuthzParameters, that.additionalAuthzParameters)) return false;
+        if (this.passwordGrantEnabled != that.passwordGrantEnabled) {
+            return false;
+        }
+        if (this.setForwardHeader != that.setForwardHeader) {
+            return false;
+        }
+        if (!Objects.equals(this.omitIdTokenHintOnLogout, that.omitIdTokenHintOnLogout)) {
+            return false;
+        }
+        if (!Objects.equals(this.jwtClientAuthentication, that.jwtClientAuthentication)) {
+            return false;
+        }
+        if (!Objects.equals(this.additionalAuthzParameters, that.additionalAuthzParameters)) {
+            return false;
+        }
+        if (!Objects.equals(this.tokenExchangeEnabled, that.tokenExchangeEnabled)) {
+            return false;
+        }
         return Objects.equals(discoveryUrl, that.discoveryUrl);
 
     }
@@ -115,8 +161,25 @@ implements Cloneable {
         result = 31 * result + (discoveryUrl != null ? discoveryUrl.hashCode() : 0);
         result = 31 * result + (passwordGrantEnabled ? 1 : 0);
         result = 31 * result + (setForwardHeader ? 1 : 0);
+        result = 31 * result + (omitIdTokenHintOnLogout != null ? omitIdTokenHintOnLogout.hashCode() : 0);
         result = 31 * result + (jwtClientAuthentication != null ? jwtClientAuthentication.hashCode() : 0);
         result = 31 * result + (additionalAuthzParameters != null ? additionalAuthzParameters.hashCode() : 0);
+        result = 31 * result + (tokenExchangeEnabled != null ? tokenExchangeEnabled.hashCode() : 0);
         return result;
+    }
+
+    @Override
+    public String toString() {
+        return "OIDCIdentityProviderDefinition{" +
+                "discoveryUrl=" + discoveryUrl +
+                ", passwordGrantEnabled=" + passwordGrantEnabled +
+                ", setForwardHeader=" + setForwardHeader +
+                ", tokenExchangeEnabled=" + tokenExchangeEnabled +
+                ", omitIdTokenHintOnLogout=" + omitIdTokenHintOnLogout +
+                ", prompts=" + prompts +
+                ", jwtClientAuthentication=" + jwtClientAuthentication +
+                ", additionalAuthzParameters=" + additionalAuthzParameters +
+                ", parent=" + super.toString() +
+                '}';
     }
 }

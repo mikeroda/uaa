@@ -1,26 +1,23 @@
 package org.cloudfoundry.identity.uaa.logging;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
-public class LogSanitizerUtilTest {
+class LogSanitizerUtilTest {
 
     @Test
-    public void testSanitizeInput() {
-        assertEquals("one|two|three|four[SANITIZED]",
-            LogSanitizerUtil.sanitize("one\ntwo\tthree\rfour"));
+    void sanitizeInput() {
+        assertThat(LogSanitizerUtil.sanitize("one\ntwo\tthree\rfour")).isEqualTo("one|two|three|four[SANITIZED]");
     }
 
     @Test
-    public void testSanitizeCleanInput() {
-        assertEquals("one two three four",
-            LogSanitizerUtil.sanitize("one two three four"));
+    void sanitizeCleanInput() {
+        assertThat(LogSanitizerUtil.sanitize("one two three four")).isEqualTo("one two three four");
     }
 
     @Test
-    public void testSanitizeNull() {
-        assertEquals(null,
-            LogSanitizerUtil.sanitize(null));
+    void sanitizeNull() {
+        assertThat(LogSanitizerUtil.sanitize(null)).isNull();
     }
 }

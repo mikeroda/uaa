@@ -13,8 +13,10 @@ import org.cloudfoundry.identity.uaa.scim.exception.ScimResourceConstraintFailed
 import org.cloudfoundry.identity.uaa.scim.exception.ScimResourceNotFoundException;
 import org.cloudfoundry.identity.uaa.util.beans.DbUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneConfiguration;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.JdbcIdentityZoneProvisioning;
+import org.cloudfoundry.identity.uaa.zone.UserConfig;
 import org.cloudfoundry.identity.uaa.zone.ZoneDoesNotExistsException;
 import org.cloudfoundry.identity.uaa.zone.event.IdentityZoneModifiedEvent;
 import org.slf4j.Logger;
@@ -23,11 +25,14 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -73,78 +78,63 @@ public class JdbcScimGroupProvisioning extends AbstractQueryable<ScimGroup>
     private JdbcIdentityZoneProvisioning jdbcIdentityZoneProvisioning;
 
     public JdbcScimGroupProvisioning(
-            final JdbcTemplate jdbcTemplate,
+            final NamedParameterJdbcTemplate namedJdbcTemplate,
             final JdbcPagingListFactory pagingListFactory,
             final DbUtils dbUtils) throws SQLException {
-        super(jdbcTemplate, pagingListFactory, new ScimGroupRowMapper());
+        super(namedJdbcTemplate, pagingListFactory, new ScimGroupRowMapper());
 
-        this.jdbcTemplate = jdbcTemplate;
+        this.jdbcTemplate = namedJdbcTemplate.getJdbcTemplate();
 
         final String quotedGroupsTableName = dbUtils.getQuotedIdentifier(GROUP_TABLE, jdbcTemplate);
-        updateGroupSql = String.format(
-                "update %s set version=?, displayName=?, description=?, lastModified=? where id=? and version=? and identity_zone_id=?",
+        updateGroupSql = "update %s set version=?, displayName=?, description=?, lastModified=? where id=? and version=? and identity_zone_id=?".formatted(
                 quotedGroupsTableName
         );
-        getGroupSql = String.format(
-                "select %s from %s where id=? and identity_zone_id=?",
+        getGroupSql = "select %s from %s where id=? and identity_zone_id=?".formatted(
                 GROUP_FIELDS,
                 quotedGroupsTableName
         );
-        getGroupByNameSql = String.format(
-                "select %s from %s where LOWER(displayName)=LOWER(?) and LOWER(identity_zone_id)=LOWER(?)",
+        getGroupByNameSql = "select %s from %s where LOWER(displayName)=LOWER(?) and LOWER(identity_zone_id)=LOWER(?)".formatted(
                 GROUP_FIELDS,
                 quotedGroupsTableName
         );
-        queryForFilter = String.format(
-                "select %s from %s",
+        queryForFilter = "select %s from %s".formatted(
                 GROUP_FIELDS,
                 quotedGroupsTableName
         );
-        deleteGroupSql = String.format(
-                "delete from %s where id=? and identity_zone_id=?",
+        deleteGroupSql = "delete from %s where id=? and identity_zone_id=?".formatted(
                 quotedGroupsTableName
         );
 
-        deleteGroupSqlByIdZoneVersion = String.format(
-            "delete from %s where id=? and identity_zone_id=? and version=?",
-            quotedGroupsTableName
-        );
-
-        deleteGroupByZone = String.format(
-                "delete from %s where identity_zone_id=?",
+        deleteGroupSqlByIdZoneVersion = "delete from %s where id=? and identity_zone_id=? and version=?".formatted(
                 quotedGroupsTableName
         );
-        deleteGroupMembershipByZone = String.format(
-                "delete from %s where identity_zone_id = ?",
+
+        deleteGroupByZone = "delete from %s where identity_zone_id=?".formatted(
+                quotedGroupsTableName
+        );
+        deleteGroupMembershipByZone = "delete from %s where identity_zone_id = ?".formatted(
                 GROUP_MEMBERSHIP_TABLE
         );
-        deleteExternalGroupByZone = String.format(
-                "delete from %s where identity_zone_id = ?",
+        deleteExternalGroupByZone = "delete from %s where identity_zone_id = ?".formatted(
                 EXTERNAL_GROUP_TABLE
         );
-        deleteZoneAdminMembershipByZone = String.format(
-                "delete from %s where group_id in (select id from %s where identity_zone_id=? and displayName like ?)",
+        deleteZoneAdminMembershipByZone = "delete from %s where group_id in (select id from %s where identity_zone_id=? and displayName like ?)".formatted(
                 GROUP_MEMBERSHIP_TABLE,
                 quotedGroupsTableName
         );
-        deleteZoneAdminGroupsByZone = String.format(
-                "delete from %s where identity_zone_id=? and displayName like ?",
+        deleteZoneAdminGroupsByZone = "delete from %s where identity_zone_id=? and displayName like ?".formatted(
                 quotedGroupsTableName
         );
-        deleteGroupMembershipByProvider = String.format(
-                "delete from %s where identity_zone_id = ? and origin = ?",
+        deleteGroupMembershipByProvider = "delete from %s where identity_zone_id = ? and origin = ?".formatted(
                 GROUP_MEMBERSHIP_TABLE
         );
-        deleteExternalGroupByProvider = String.format(
-                "delete from %s where identity_zone_id = ? and origin = ?",
+        deleteExternalGroupByProvider = "delete from %s where identity_zone_id = ? and origin = ?".formatted(
                 EXTERNAL_GROUP_TABLE
         );
-        deleteMemberSql = String.format(
-                "delete from %s where member_id=? and member_id in (select id from users where id=? and identity_zone_id=?)",
+        deleteMemberSql = "delete from %s where member_id=? and member_id in (select id from users where id=? and identity_zone_id=?)".formatted(
                 GROUP_MEMBERSHIP_TABLE
         );
-        addGroupSql = String.format(
-                "insert into %s ( %s ) values (?,?,?,?,?,?,?)",
+        addGroupSql = "insert into %s ( %s ) values (?,?,?,?,?,?,?)".formatted(
                 quotedGroupsTableName,
                 GROUP_FIELDS
         );
@@ -187,7 +177,7 @@ public class JdbcScimGroupProvisioning extends AbstractQueryable<ScimGroup>
         }
         List<ScimGroup> groups = jdbcTemplate.query(getGroupByNameSql, rowMapper, displayName, zoneId);
         if (groups.size() == 1) {
-            return groups.get(0);
+            return groups.getFirst();
         } else {
             throw new IncorrectResultSizeDataAccessException("Invalid result size found for:" + displayName, 1, groups.size());
         }
@@ -196,12 +186,31 @@ public class JdbcScimGroupProvisioning extends AbstractQueryable<ScimGroup>
     @Override
     public void onApplicationEvent(AbstractUaaEvent event) {
         if (event instanceof IdentityZoneModifiedEvent zevent && zevent.getEventType() == AuditEventType.IdentityZoneCreatedEvent) {
-            final String zoneId = ((IdentityZone) event.getSource()).getId();
-            getSystemScopes().forEach(
+            final IdentityZone zone = (IdentityZone) event.getSource();
+            final String zoneId = zone.getId();
+            getEffectiveSystemScopes(zone).forEach(
                     scope -> createAndIgnoreDuplicate(scope, zoneId)
             );
         }
         SystemDeletable.super.onApplicationEvent(event);
+    }
+
+    /**
+     * Determine the system scopes and remove those that are not part in the groups allow list for the given zone. If no
+     * such allow list is defined, all system scopes are returned.
+     */
+    private List<String> getEffectiveSystemScopes(final IdentityZone zone) {
+        final List<String> systemScopes = new ArrayList<>(getSystemScopes());
+
+        final Optional<Set<String>> allowedGroupsForZoneOpt = Optional.ofNullable(zone.getConfig())
+                .map(IdentityZoneConfiguration::getUserConfig)
+                .map(UserConfig::resultingAllowedGroups);
+        if (allowedGroupsForZoneOpt.isEmpty()) {
+            return systemScopes;
+        }
+
+        final Set<String> allowedGroupsForZone = allowedGroupsForZoneOpt.get();
+        return systemScopes.stream().filter(allowedGroupsForZone::contains).toList();
     }
 
     @Override
@@ -234,9 +243,9 @@ public class JdbcScimGroupProvisioning extends AbstractQueryable<ScimGroup>
         Set<String> zoneAllowedGroups = null; // default: all groups allowed
         try {
             IdentityZone currentZone = IdentityZoneHolder.get();
-            zoneAllowedGroups = (currentZone.getId().equals(zoneId)) ?
-                currentZone.getConfig().getUserConfig().resultingAllowedGroups() :
-                jdbcIdentityZoneProvisioning.retrieve(zoneId).getConfig().getUserConfig().resultingAllowedGroups();
+            zoneAllowedGroups = currentZone.getId().equals(zoneId) ?
+                    currentZone.getConfig().getUserConfig().resultingAllowedGroups() :
+                    jdbcIdentityZoneProvisioning.retrieve(zoneId).getConfig().getUserConfig().resultingAllowedGroups();
         } catch (ZoneDoesNotExistsException e) {
             logger.debug("could not retrieve identity zone with id: {}", zoneId);
         }
@@ -353,7 +362,7 @@ public class JdbcScimGroupProvisioning extends AbstractQueryable<ScimGroup>
         Set<String> allowedGroups = getAllowedUserGroups(zoneId);
         if ((allowedGroups != null) && (!allowedGroups.contains(group.getDisplayName()))) {
             throw new InvalidScimResourceException("The group with displayName: " + group.getDisplayName()
-                + " is not allowed in Identity Zone " + zoneId);
+                    + " is not allowed in Identity Zone " + zoneId);
         }
     }
 

@@ -3,77 +3,74 @@ package org.cloudfoundry.identity.uaa.authentication;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class UaaAuthenticationDetailsTest {
 
     @Test
-    void testToStringDoesNotContainSessionId() {
+    void toStringDoesNotContainSessionId() {
         UaaAuthenticationDetails details = new UaaAuthenticationDetails(false, "clientid", "origin", "1234");
         String toString = details.toString();
-        assertTrue(toString.contains("sessionId=<SESSION>"));
+        assertThat(toString).contains("sessionId=<SESSION>");
     }
 
     @Test
-    void testBuildValidAuthenticationDetails() {
+    void buildValidAuthenticationDetails() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute("clientId", "a");
         UaaAuthenticationDetails details = new UaaAuthenticationDetails(request);
-        assertEquals("a", details.getClientId());
+        assertThat(details.getClientId()).isEqualTo("a");
     }
 
     @Test
-    void testBuildWithoutAuthenticationDetails() {
+    void buildWithoutAuthenticationDetails() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         UaaAuthenticationDetails details = new UaaAuthenticationDetails(request);
-        assertNull(details.getClientId());
+        assertThat(details.getClientId()).isNull();
     }
 
     @Test
-    void testNoLoginHint() {
+    void noLoginHint() {
         HttpServletRequest request = new MockHttpServletRequest();
 
         UaaAuthenticationDetails details = new UaaAuthenticationDetails(request, "cliendId");
-        assertNull(details.getLoginHint());
+        assertThat(details.getLoginHint()).isNull();
     }
 
     @Test
-    void testPublicTokenRequest() {
+    void publicTokenRequest() {
         HttpServletRequest request = new MockHttpServletRequest("POST", "/oauth/token");
 
         UaaAuthenticationDetails details = new UaaAuthenticationDetails(request, "cliendId");
         details.setAuthenticationMethod("none");
-        assertNull(details.getLoginHint());
-        assertFalse(details.isAuthorizationSet());
-        assertEquals("/oauth/token", details.getRequestPath());
-        assertEquals("none", details.getAuthenticationMethod());
+        assertThat(details.getLoginHint()).isNull();
+        assertThat(details.isAuthorizationSet()).isFalse();
+        assertThat(details.getRequestPath()).isEqualTo("/oauth/token");
+        assertThat(details.getAuthenticationMethod()).isEqualTo("none");
     }
 
     @Test
-    void testSavesRequestParameters() {
+    void savesRequestParameters() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addParameter("key", "value");
 
         UaaAuthenticationDetails details = new UaaAuthenticationDetails(request, null);
-        assertEquals("value", details.getParameterMap().get("key")[0]);
+        assertThat(details.getParameterMap().get("key")[0]).isEqualTo("value");
     }
 
     @Test
-    void testDoesNotSaveUsernamePasswordRequestParameters() {
+    void doesNotSaveUsernamePasswordRequestParameters() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         String[] filteredKeys = {"Username", "username", "Password", "password", "Passcode", "passcode"};
-        for(String key : filteredKeys) {
+        for (String key : filteredKeys) {
             request.addParameter(key, "value");
         }
 
         UaaAuthenticationDetails details = new UaaAuthenticationDetails(request, null);
-        for(String key : filteredKeys) {
-            assertNull(details.getParameterMap().get(key));
+        for (String key : filteredKeys) {
+            assertThat(details.getParameterMap()).doesNotContainKey(key);
         }
     }
 }

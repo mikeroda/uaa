@@ -2,7 +2,6 @@ package org.cloudfoundry.identity.uaa.security.web;
 
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
-import org.hamcrest.MatcherAssert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -10,8 +9,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,11 +18,17 @@ import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
-import static org.springframework.http.HttpMethod.*;
-import static org.springframework.http.HttpStatus.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.http.HttpMethod.DELETE;
+import static org.springframework.http.HttpMethod.GET;
+import static org.springframework.http.HttpMethod.OPTIONS;
+import static org.springframework.http.HttpMethod.POST;
+import static org.springframework.http.HttpMethod.PUT;
+import static org.springframework.http.HttpStatus.FORBIDDEN;
+import static org.springframework.http.HttpStatus.METHOD_NOT_ALLOWED;
+import static org.springframework.http.HttpStatus.OK;
 
 class CorsFilterNonDefaultZoneTests {
     private IdentityZoneManager mockIdentityZoneManager;
@@ -56,39 +61,39 @@ class CorsFilterNonDefaultZoneTests {
             "GET, /uaa/userinfo, bunnyoutlet.com, Illegal origin",
             "GET, /uaa/login, example.com, Illegal request URI",
     })
-    void testRequestWithInvalidOrigins(String method, String url, String origin, String message) throws ServletException, IOException {
+    void requestWithInvalidOrigins(String method, String url, String origin, String message) throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest(method, url);
         request.addHeader("Origin", origin);
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(FORBIDDEN.value(), response.getStatus());
-        assertEquals(message, response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(FORBIDDEN.value());
+        assertThat(response.getErrorMessage()).isEqualTo(message);
     }
 
     @Test
-    void testSameOriginRequest() throws ServletException, IOException {
+    void sameOriginRequest() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/uaa/userinfo");
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(OK.value());
     }
 
     // happy path
     @Test
-    void testRequestExpectXhrCorsResponse() throws ServletException, IOException {
+    void requestExpectXhrCorsResponse() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/uaa/userinfo");
         request.addHeader("Origin", "example.com");
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
-        assertEquals("example.com", response.getHeaderValue("Access-Control-Allow-Origin"));
+        assertThat(response.getStatus()).isEqualTo(OK.value());
+        assertThat(response.getHeaderValue("Access-Control-Allow-Origin")).isEqualTo("example.com");
     }
 
     @Test
-    void testRequestWithAllowedOriginPatterns() throws ServletException, IOException {
+    void requestWithAllowedOriginPatterns() throws ServletException, IOException {
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().getAllowedOriginPatterns()
                 .add(Pattern.compile("bunnyoutlet-shop.com$"));
 
@@ -97,11 +102,11 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(OK.value());
     }
 
     @Test
-    void testRequestWithAllowedUriPatterns() throws ServletException, IOException {
+    void requestWithAllowedUriPatterns() throws ServletException, IOException {
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().getAllowedUriPatterns()
                 .add(Pattern.compile("/uaa/*"));
 
@@ -110,11 +115,11 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(OK.value());
     }
 
     @Test
-    void testRequestWithMethodNotAllowed() throws ServletException, IOException {
+    void requestWithMethodNotAllowed() throws ServletException, IOException {
         List<String> allowedMethods = List.of(GET.toString(), OPTIONS.toString(), DELETE.toString());
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().setAllowedMethods(allowedMethods);
 
@@ -123,54 +128,52 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(METHOD_NOT_ALLOWED.value(), response.getStatus());
-        assertEquals("Illegal method.", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(METHOD_NOT_ALLOWED.value());
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal method.");
     }
 
     // preflight happy path
     @Test
-    void testPreFlightExpectXhrCorsResponse() throws ServletException, IOException {
+    void preFlightExpectXhrCorsResponse() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Headers", "Authorization, X-Requested-With");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals("example.com", response.getHeaderValue("Access-Control-Allow-Origin"));
-        assertEquals("GET, POST, PUT, DELETE",
-                response.getHeaderValue("Access-Control-Allow-Methods"));
-        assertEquals("Authorization, X-Requested-With",
-                response.getHeaderValue("Access-Control-Allow-Headers"));
-        assertEquals("187000", response.getHeaderValue("Access-Control-Max-Age"));
-        assertEquals(OK.value(), response.getStatus());
+        assertThat(response.getHeaderValue("Access-Control-Allow-Origin")).isEqualTo("example.com");
+        assertThat(response.getHeaderValue("Access-Control-Allow-Methods")).isEqualTo("GET, POST, PUT, DELETE");
+        assertThat(response.getHeaderValue("Access-Control-Allow-Headers")).isEqualTo("Authorization, X-Requested-With");
+        assertThat(response.getHeaderValue("Access-Control-Max-Age")).isEqualTo("187000");
+        assertThat(response.getStatus()).isEqualTo(OK.value());
     }
 
     @Test
-    void testPreFlightWrongOriginSpecified() throws ServletException, IOException {
+    void preFlightWrongOriginSpecified() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Headers", "Authorization, X-Requested-With");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Origin", "bunnyoutlet.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(403, response.getStatus());
-        assertEquals("Illegal origin", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal origin");
     }
 
     @Test
-    void testPreFlightRequestNoRequestMethod() throws ServletException, IOException {
+    void preFlightRequestNoRequestMethod() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Headers", "Authorization, X-Requested-With");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(400, response.getStatus());
-        assertEquals("Access-Control-Request-Method header is missing", response.getErrorMessage());
-        assertEquals("example.com", response.getHeaderValue("Access-Control-Allow-Origin"));
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(response.getErrorMessage()).isEqualTo("Access-Control-Request-Method header is missing");
+        assertThat(response.getHeaderValue("Access-Control-Allow-Origin")).isEqualTo("example.com");
     }
 
     @Test
-    void testPreFlightRequestMethodNotAllowed() throws ServletException, IOException {
+    void preFlightRequestMethodNotAllowed() throws ServletException, IOException {
         List<String> allowedMethods = List.of(GET.toString(), PUT.toString(), DELETE.toString());
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().setAllowedMethods(allowedMethods);
 
@@ -180,44 +183,44 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(405, response.getStatus());
-        assertEquals("Illegal method requested", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(405);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal method requested");
     }
 
     @Test
-    void testPreFlightRequestHeaderNotAllowed() throws ServletException, IOException {
+    void preFlightRequestHeaderNotAllowed() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Headers", "Authorization, X-Requested-With, X-Not-Allowed");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(403, response.getStatus());
-        assertEquals("Illegal header requested", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal header requested");
     }
 
     @Test
-    void testPreFlightRequestUriNotAllowed() throws ServletException, IOException {
+    void preFlightRequestUriNotAllowed() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/login");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Access-Control-Request-Headers", "X-Requested-With");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(403, response.getStatus());
-        assertEquals("Illegal request URI", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal request URI");
     }
 
     @Test
-    void testPreFlightOriginNotAllowed() throws ServletException, IOException {
+    void preFlightOriginNotAllowed() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Access-Control-Request-Headers", "X-Requested-With");
         request.addHeader("Origin", "bunnyoutlet.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(403, response.getStatus());
-        assertEquals("Illegal origin", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal origin");
     }
 
     // default cors
@@ -227,36 +230,36 @@ class CorsFilterNonDefaultZoneTests {
             "GET, /uaa/userinfo, bunnyoutlet.com, Illegal origin",
             "GET, /uaa/login, example.com, Illegal request URI",
     })
-    void testDefaultCorsWithInvalidOrigins(String method, String url, String origin, String message) throws ServletException, IOException {
+    void defaultCorsWithInvalidOrigins(String method, String url, String origin, String message) throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest(method, url);
         request.addHeader("Origin", origin);
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(FORBIDDEN.value(), response.getStatus());
-        assertEquals(message, response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(FORBIDDEN.value());
+        assertThat(response.getErrorMessage()).isEqualTo(message);
     }
 
     @Test
-    void testDefaultCorsWithSameOrigin() throws ServletException, IOException {
+    void defaultCorsWithSameOrigin() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/uaa/userinfo");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(OK.value());
     }
 
     // happy path
     @Test
-    void testDefaultCorsExpectStandardCorsResponse() throws ServletException, IOException {
+    void defaultCorsExpectStandardCorsResponse() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/uaa/userinfo");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
-        assertEquals("example.com", response.getHeaderValue("Access-Control-Allow-Origin"));
+        assertThat(response.getStatus()).isEqualTo(OK.value());
+        assertThat(response.getHeaderValue("Access-Control-Allow-Origin")).isEqualTo("example.com");
     }
 
     @Test
-    void testDefaultCorsWithAllowedOriginPatterns() throws ServletException, IOException {
+    void defaultCorsWithAllowedOriginPatterns() throws ServletException, IOException {
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().getAllowedOriginPatterns()
                 .add(Pattern.compile("bunnyoutlet.com$"));
 
@@ -264,11 +267,11 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("Origin", "bunnyoutlet.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(OK.value());
     }
 
     @Test
-    void testDefaultCorsWithAllowedUriPatterns() throws ServletException, IOException {
+    void defaultCorsWithAllowedUriPatterns() throws ServletException, IOException {
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().getAllowedUriPatterns()
                 .add(Pattern.compile("/uaa/*"));
 
@@ -276,11 +279,11 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(OK.value());
     }
 
     @Test
-    void testDefaultCorsWithMethodNotAllowed() throws ServletException, IOException {
+    void defaultCorsWithMethodNotAllowed() throws ServletException, IOException {
         List<String> allowedMethods = List.of(GET.toString(), OPTIONS.toString(), DELETE.toString());
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().setAllowedMethods(allowedMethods);
 
@@ -288,52 +291,52 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(METHOD_NOT_ALLOWED.value(), response.getStatus());
-        assertEquals("Illegal method.", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(METHOD_NOT_ALLOWED.value());
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal method.");
     }
 
     // preflight happy path
     @Test
-    void testDefaultCorsPreFlightExpectStandardCorsResponse() throws ServletException, IOException {
+    void defaultCorsPreFlightExpectStandardCorsResponse() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Headers", "Authorization");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals("example.com", response.getHeaderValue("Access-Control-Allow-Origin"));
-        assertEquals("GET, POST, PUT, DELETE", response.getHeaderValue("Access-Control-Allow-Methods"));
-        MatcherAssert.assertThat(new CorsFilter(mockIdentityZoneManager, false).
-                splitCommaDelimitedString((String)response.getHeaderValue("Access-Control-Allow-Headers")), containsInAnyOrder("Authorization"));
-        assertEquals("187000", response.getHeaderValue("Access-Control-Max-Age"));
+        assertThat(response.getHeaderValue("Access-Control-Allow-Origin")).isEqualTo("example.com");
+        assertThat(response.getHeaderValue("Access-Control-Allow-Methods")).isEqualTo("GET, POST, PUT, DELETE");
+        assertThat(new CorsFilter(mockIdentityZoneManager, false).
+                splitCommaDelimitedString((String) response.getHeaderValue("Access-Control-Allow-Headers"))).containsExactlyInAnyOrder("Authorization");
+        assertThat(response.getHeaderValue("Access-Control-Max-Age")).isEqualTo("187000");
     }
 
     @Test
-    void testDefaultCorsPreFlightWrongOriginSpecified() throws ServletException, IOException {
+    void defaultCorsPreFlightWrongOriginSpecified() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Headers", "Authorization");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Origin", "bunnyoutlet.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(403, response.getStatus());
-        assertEquals("Illegal origin", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal origin");
     }
 
     @Test
-    void testDefaultCorsPreFlightRequestNoRequestMethod() throws ServletException, IOException {
+    void defaultCorsPreFlightRequestNoRequestMethod() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Headers", "Authorization");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(400, response.getStatus());
-        assertEquals("Access-Control-Request-Method header is missing", response.getErrorMessage());
-        assertEquals("example.com", response.getHeaderValue("Access-Control-Allow-Origin"));
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(response.getErrorMessage()).isEqualTo("Access-Control-Request-Method header is missing");
+        assertThat(response.getHeaderValue("Access-Control-Allow-Origin")).isEqualTo("example.com");
     }
 
     @Test
-    void testDefaultCorsPreFlightRequestMethodNotAllowed() throws ServletException, IOException {
+    void defaultCorsPreFlightRequestMethodNotAllowed() throws ServletException, IOException {
         List<String> allowedMethods = List.of(GET.toString(), PUT.toString(), DELETE.toString());
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().setAllowedMethods(allowedMethods);
 
@@ -343,48 +346,48 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(405, response.getStatus());
-        assertEquals("Illegal method requested", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(405);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal method requested");
     }
 
     @Test
-    void testDefaultCorsPreFlightRequestHeaderNotAllowed() throws ServletException, IOException {
+    void defaultCorsPreFlightRequestHeaderNotAllowed() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Headers", "Authorization, X-Not-Allowed");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(403, response.getStatus());
-        assertEquals("Illegal header requested", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal header requested");
     }
 
     @Test
-    void testDefaultCorsPreFlightRequestUriNotAllowed() throws ServletException, IOException {
+    void defaultCorsPreFlightRequestUriNotAllowed() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/login");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Access-Control-Request-Headers", "Authorization");
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(403, response.getStatus());
-        assertEquals("Illegal request URI", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal request URI");
     }
 
     @Test
-    void testDefaultCorsPreFlightOriginNotAllowed() throws ServletException, IOException {
+    void defaultCorsPreFlightOriginNotAllowed() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/uaa/userinfo");
         request.addHeader("Access-Control-Request-Method", "GET");
         request.addHeader("Access-Control-Request-Headers", "Authorization");
         request.addHeader("Origin", "bunnyoutlet.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(403, response.getStatus());
-        assertEquals("Illegal origin", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal origin");
     }
 
     @Test
-    void testRequestWithAllowedOriginPatternsEnforcingSystemZonePolicy() throws ServletException, IOException {
+    void requestWithAllowedOriginPatternsEnforcingSystemZonePolicy() throws ServletException, IOException {
         CorsFilter corsFilter = new CorsFilter(mockIdentityZoneManager, true);
         corsFilter.setCorsXhrAllowedOrigins(List.of("example.com"));
         corsFilter.initialize();
@@ -397,12 +400,12 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(FORBIDDEN.value(), response.getStatus());
-        assertEquals("Illegal origin", response.getErrorMessage());
+        assertThat(response.getStatus()).isEqualTo(FORBIDDEN.value());
+        assertThat(response.getErrorMessage()).isEqualTo("Illegal origin");
     }
 
     @Test
-    void testDefaultCorsPreFlightRequestMethodNotAllowedEnforcingSystemZonePolicy() throws ServletException, IOException {
+    void defaultCorsPreFlightRequestMethodNotAllowedEnforcingSystemZonePolicy() throws ServletException, IOException {
         CorsFilter corsFilter = new CorsFilter(mockIdentityZoneManager, true);
         corsFilter.setCorsAllowedMethods(List.of(GET.toString(), PUT.toString(), DELETE.toString()));
         corsFilter.initialize();
@@ -416,7 +419,7 @@ class CorsFilterNonDefaultZoneTests {
         request.addHeader("Origin", "example.com");
         corsFilter.doFilter(request, response, filterChain);
 
-        assertEquals(OK.value(), response.getStatus());
+        assertThat(response.getStatus()).isEqualTo(OK.value());
     }
 
     private void setupBaselineCorsPolicyXhrConfiguration() {
@@ -424,14 +427,14 @@ class CorsFilterNonDefaultZoneTests {
                 PUT.toString(), DELETE.toString());
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().setAllowedMethods(allowedMethods);
 
-        List<String> allowedUris = new ArrayList<>(Arrays.asList("^/uaa/userinfo$", "^/uaa/logout\\.do$" ));
+        List<String> allowedUris = new ArrayList<>(Arrays.asList("^/uaa/userinfo$", "^/uaa/logout\\.do$"));
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().setAllowedUris(allowedUris);
 
-        List<String> allowedOrigins = new ArrayList<String>(Collections.singletonList("example.com$"));
+        List<String> allowedOrigins = new ArrayList<>(Collections.singletonList("example.com$"));
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().setAllowedOrigins(allowedOrigins);
 
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().setAllowedHeaders(
-                Arrays.asList("Accept", "Authorization","X-Requested-With"));
+                Arrays.asList("Accept", "Authorization", "X-Requested-With"));
 
         identityZone.getConfig().getCorsPolicy().getXhrConfiguration().setMaxAge(187000);
 
@@ -442,12 +445,12 @@ class CorsFilterNonDefaultZoneTests {
         List<String> allowedMethods = List.of(GET.toString(), POST.toString(),
                 PUT.toString(), DELETE.toString());
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().setAllowedMethods(allowedMethods);
-        List<String> allowedUris = new ArrayList<>(Arrays.asList("^/uaa/userinfo$", "^/uaa/logout\\.do$" ));
+        List<String> allowedUris = new ArrayList<>(Arrays.asList("^/uaa/userinfo$", "^/uaa/logout\\.do$"));
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().setAllowedUris(allowedUris);
-        List<String> allowedOrigins = new ArrayList<String>(Collections.singletonList("example.com$"));
+        List<String> allowedOrigins = new ArrayList<>(Collections.singletonList("example.com$"));
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().setAllowedOrigins(allowedOrigins);
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().setAllowedHeaders(
-                Arrays.asList("Accept", "Authorization","X-Requested-With"));
+                Arrays.asList("Accept", "Authorization", "X-Requested-With"));
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().setMaxAge(187000);
         identityZone.getConfig().getCorsPolicy().getDefaultConfiguration().setAllowedCredentials(true);
     }

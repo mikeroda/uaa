@@ -6,12 +6,12 @@ import org.mockito.Mockito;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 import java.io.IOException;
 import java.util.Arrays;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 class ContentSecurityPolicyFilterTest {
@@ -33,8 +33,7 @@ class ContentSecurityPolicyFilterTest {
     void verifyRequestHasHeader() throws ServletException, IOException {
         filter.doFilter(request, response, chain);
 
-        assertEquals("script-src 'self'",
-                response.getHeader("Content-Security-Policy"));
+        assertThat(response.getHeader("Content-Security-Policy")).isEqualTo("script-src 'self'");
     }
 
     @Test
@@ -42,7 +41,7 @@ class ContentSecurityPolicyFilterTest {
         request.setServletPath("/saml/some-path");
         filter.doFilter(request, response, chain);
 
-        assertNull(response.getHeader("Content-Security-Policy"));
+        assertThat(response.getHeader("Content-Security-Policy")).isNull();
     }
 
     @Test
@@ -50,7 +49,7 @@ class ContentSecurityPolicyFilterTest {
         request.setServletPath("/samlSomeOtherThing");
         filter.doFilter(request, response, chain);
 
-        assertNotNull(response.getHeader("Content-Security-Policy"));
+        assertThat(response.getHeader("Content-Security-Policy")).isNotNull();
     }
 
     @Test
@@ -58,7 +57,7 @@ class ContentSecurityPolicyFilterTest {
         request.setServletPath("/other/saml/");
         filter.doFilter(request, response, chain);
 
-        assertNotNull(response.getHeader("Content-Security-Policy"));
+        assertThat(response.getHeader("Content-Security-Policy")).isNotNull();
     }
 
     @Test
@@ -66,7 +65,7 @@ class ContentSecurityPolicyFilterTest {
         request.setServletPath("/login_implicit");
         filter.doFilter(request, response, chain);
 
-        assertNull(response.getHeader("Content-Security-Policy"));
+        assertThat(response.getHeader("Content-Security-Policy")).isNull();
     }
 
     @Test
@@ -77,11 +76,10 @@ class ContentSecurityPolicyFilterTest {
     }
 
     @Test
-    void testCustomScriptSrc() throws ServletException, IOException {
+    void customScriptSrc() throws ServletException, IOException {
         filter = new ContentSecurityPolicyFilter(Arrays.asList("'self'", "custom"));
         filter.doFilter(request, response, chain);
 
-        assertEquals("script-src 'self' custom",
-                response.getHeader("Content-Security-Policy"));
+        assertThat(response.getHeader("Content-Security-Policy")).isEqualTo("script-src 'self' custom");
     }
 }

@@ -1,12 +1,13 @@
 package org.cloudfoundry.identity.uaa.zone;
 
+import org.cloudfoundry.identity.uaa.oauth.client.ClientJwtCredential;
+import org.cloudfoundry.identity.uaa.oauth.provider.ClientRegistrationService;
 import org.cloudfoundry.identity.uaa.provider.ClientAlreadyExistsException;
 import org.cloudfoundry.identity.uaa.provider.ClientRegistrationException;
 import org.cloudfoundry.identity.uaa.provider.NoSuchClientException;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
-import org.springframework.security.oauth2.provider.ClientDetails;
-import org.springframework.security.oauth2.provider.ClientDetailsService;
-import org.springframework.security.oauth2.provider.ClientRegistrationService;
+import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
+import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetailsService;
 
 import java.util.List;
 
@@ -40,7 +41,11 @@ interface MultitenantClientSecretService {
 
     void addClientJwtConfig(String clientId, String keyConfig, String zoneId, boolean overwrite) throws NoSuchClientException;
 
+    void addClientJwtCredential(String clientId, ClientJwtCredential keyConfig, String zoneId, boolean overwrite) throws NoSuchClientException;
+
     void deleteClientJwtConfig(String clientId, String keyConfig, String zoneId) throws NoSuchClientException;
+
+    void deleteClientJwtCredential(String clientId, ClientJwtCredential keyConfig, String zoneId) throws NoSuchClientException;
 }
 
 public abstract class MultitenantClientServices implements

@@ -7,6 +7,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.lang.Nullable;
+
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class UserConfig {
@@ -23,11 +25,13 @@ public class UserConfig {
     private List<String> defaultGroups = DEFAULT_ZONE_GROUPS;
 
     // in addition to defaultGroups, which are implicitely allowed
-    private List<String> allowedGroups = null;
+    private List<String> allowedGroups;
 
     private int maxUsers = -1;
 
     private boolean checkOriginEnabled;
+
+    private boolean allowOriginLoop = true;
 
     public List<String> getDefaultGroups() {
         return defaultGroups;
@@ -46,16 +50,19 @@ public class UserConfig {
     }
 
     public boolean allGroupsAllowed() {
-        return (allowedGroups == null);
+        return allowedGroups == null;
     }
 
     // return defaultGroups plus allowedGroups
+    @Nullable
     public Set<String> resultingAllowedGroups() {
         if (allGroupsAllowed()) {
             return null; // null = all groups allowed
         } else {
             HashSet<String> allAllowedGroups = new HashSet<>(allowedGroups);
-            if (defaultGroups != null) allAllowedGroups.addAll(defaultGroups);
+            if (defaultGroups != null) {
+                allAllowedGroups.addAll(defaultGroups);
+            }
             return allAllowedGroups;
         }
     }
@@ -74,5 +81,13 @@ public class UserConfig {
 
     public void setCheckOriginEnabled(boolean checkOriginEnabled) {
         this.checkOriginEnabled = checkOriginEnabled;
+    }
+
+    public boolean isAllowOriginLoop() {
+        return this.allowOriginLoop;
+    }
+
+    public void setAllowOriginLoop(final boolean allowAllOrigins) {
+        this.allowOriginLoop = allowAllOrigins;
     }
 }

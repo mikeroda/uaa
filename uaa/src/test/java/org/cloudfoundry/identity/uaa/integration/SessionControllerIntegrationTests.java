@@ -2,38 +2,35 @@ package org.cloudfoundry.identity.uaa.integration;
 
 import org.cloudfoundry.identity.uaa.integration.feature.DefaultIntegrationTestConfig;
 import org.cloudfoundry.identity.uaa.integration.feature.TestClient;
+import org.cloudfoundry.identity.uaa.oauth.client.test.TestAccounts;
+import org.cloudfoundry.identity.uaa.test.UaaWebDriver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.oauth2.client.test.TestAccounts;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = DefaultIntegrationTestConfig.class)
+@SpringJUnitConfig(classes = DefaultIntegrationTestConfig.class)
 class SessionControllerIntegrationTests {
     @Autowired
     TestClient testClient;
     @Autowired
     TestAccounts testAccounts;
     @Autowired
-    WebDriver webDriver;
+    UaaWebDriver webDriver;
     @Value("${integration.test.base_url}")
     String baseUrl;
 
     @BeforeEach
     @AfterEach
-    public void logout_and_clear_cookies() {
+    void logout_and_clear_cookies() {
         try {
             webDriver.get(baseUrl + "/logout.do");
-        }catch (org.openqa.selenium.TimeoutException x) {
+        } catch (org.openqa.selenium.TimeoutException x) {
             //try again - this should not be happening - 20 second timeouts
             webDriver.get(baseUrl + "/logout.do");
         }
@@ -45,9 +42,11 @@ class SessionControllerIntegrationTests {
         webDriver.get(baseUrl +
                 "/session?clientId=admin&messageOrigin=http://localhost:8080");
 
-        Object r = ((JavascriptExecutor)webDriver).executeScript(
-                "return typeof(handleMessage);");
-        assertEquals("function", r.toString());
+        WebDriverWait wait = webDriver.createWebDriverWait();
+        Object type = wait.until(driver -> webDriver.getJavascriptExecutor().executeScript(
+                "return typeof(handleMessage);"));
+
+        assertThat(type).hasToString("function");
     }
 
     @Test
@@ -55,12 +54,19 @@ class SessionControllerIntegrationTests {
         webDriver.get(baseUrl +
                 "/session_management?clientId=admin&messageOrigin=http://localhost:8080");
 
-        Object clientId = ((JavascriptExecutor)webDriver).executeScript(
-                "return clientId;");
-        assertEquals("admin", clientId.toString());
+        // Use WebDriverWait to wait for the variable to exist (prevents race conditions)
+        // return null instead of crashing if undefined (better assertion handling)
+        WebDriverWait wait = webDriver.createWebDriverWait();
+        Object clientId = wait.until(driver -> webDriver.getJavascriptExecutor().executeScript(
+                "return (typeof clientId !== 'undefined') ? clientId : null;"));
 
-        Object origin = ((JavascriptExecutor)webDriver).executeScript(
-                "return messageOrigin;");
-        assertEquals("http://localhost:8080", origin.toString());
+        assertThat(clientId).as("Global variable 'clientId' should match URL param")
+                .hasToString("admin");
+
+        Object origin = wait.until(driver -> webDriver.getJavascriptExecutor().executeScript(
+                "return (typeof messageOrigin !== 'undefined') ? messageOrigin : null;"));
+
+        assertThat(origin).as("Global variable 'messageOrigin' should match URL param")
+                .hasToString("http://localhost:8080");
     }
 }

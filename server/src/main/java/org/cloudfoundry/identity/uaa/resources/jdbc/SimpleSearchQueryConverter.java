@@ -5,8 +5,10 @@ import com.unboundid.scim.sdk.InvalidResourceException;
 import com.unboundid.scim.sdk.SCIMException;
 import com.unboundid.scim.sdk.SCIMFilter;
 import org.cloudfoundry.identity.uaa.resources.AttributeNameMapper;
+import org.cloudfoundry.identity.uaa.resources.JoinAttributeNameMapper;
 import org.cloudfoundry.identity.uaa.resources.SimpleAttributeNameMapper;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
+import org.cloudfoundry.identity.uaa.util.UaaStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
@@ -85,11 +87,11 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
             "g.id",
             "external_id");
 
-    private static Logger logger = LoggerFactory.getLogger(SimpleSearchQueryConverter.class);
+    private static final Logger logger = LoggerFactory.getLogger(SimpleSearchQueryConverter.class);
     private AttributeNameMapper mapper = new SimpleAttributeNameMapper(Collections.emptyMap());
 
-    private boolean dbCaseInsensitive = false;
-    private AlphanumericRandomValueStringGenerator randomStringGenerator;
+    private boolean dbCaseInsensitive;
+    private final AlphanumericRandomValueStringGenerator randomStringGenerator;
 
     public SimpleSearchQueryConverter() {
         randomStringGenerator = new AlphanumericRandomValueStringGenerator();
@@ -159,7 +161,7 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
 
             return whereClause;
         } catch (SCIMException e) {
-            logger.debug("Unable to parse " + filter, e);
+            logger.debug("Unable to parse {}", filter, e);
             throw new IllegalArgumentException("Invalid SCIM Filter: " + filter + "; Message: " + e.getMessage());
         }
     }
@@ -182,7 +184,7 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
         try {
             scimFilter = SCIMFilter.parse(filter);
         } catch (SCIMException e) {
-            logger.debug("Attempting legacy scim filter conversion for [" + filter + "]", e);
+            logger.debug("Attempting legacy scim filter conversion for [{}]", filter, e);
             filter = filter.replaceAll("'", "\"");
             scimFilter = SCIMFilter.parse(filter);
         }
@@ -216,7 +218,7 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
     private void extractValues(SCIMFilter filter, MultiValueMap<String, Object> values) throws SCIMException {
         switch (filter.getFilterType()) {
             case AND:
-                extractValues(filter.getFilterComponents().get(0), values);
+                extractValues(filter.getFilterComponents().getFirst(), values);
                 extractValues(filter.getFilterComponents().get(1), values);
                 break;
             case OR:
@@ -248,9 +250,9 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
     private String whereClauseFromFilter(SCIMFilter filter, Map<String, Object> values, AttributeNameMapper mapper, String paramPrefix) {
         switch (filter.getFilterType()) {
             case AND:
-                return "(" + whereClauseFromFilter(filter.getFilterComponents().get(0), values, mapper, paramPrefix) + " AND " + whereClauseFromFilter(filter.getFilterComponents().get(1), values, mapper, paramPrefix) + ")";
+                return "(" + whereClauseFromFilter(filter.getFilterComponents().getFirst(), values, mapper, paramPrefix) + " AND " + whereClauseFromFilter(filter.getFilterComponents().get(1), values, mapper, paramPrefix) + ")";
             case OR:
-                return "(" + whereClauseFromFilter(filter.getFilterComponents().get(0), values, mapper, paramPrefix) + " OR " + whereClauseFromFilter(filter.getFilterComponents().get(1), values, mapper, paramPrefix) + ")";
+                return "(" + whereClauseFromFilter(filter.getFilterComponents().getFirst(), values, mapper, paramPrefix) + " OR " + whereClauseFromFilter(filter.getFilterComponents().get(1), values, mapper, paramPrefix) + ")";
             case EQUALITY:
                 return comparisonClause(filter, "=", values, "", "", paramPrefix);
             case CONTAINS:
@@ -272,11 +274,11 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
     }
 
     private String comparisonClause(SCIMFilter filter,
-                                    String comparator,
-                                    Map<String, Object> values,
-                                    String valuePrefix,
-                                    String valueSuffix,
-                                    String paramPrefix) {
+            String comparator,
+            Map<String, Object> values,
+            String valuePrefix,
+            String valueSuffix,
+            String paramPrefix) {
         String pName = getParamName(values, paramPrefix);
         String paramName = ":" + pName;
         if (filter.getFilterValue() == null) {
@@ -290,6 +292,7 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
                     case "password":
                     case "salt":
                         value = "";
+                        break;
                     default:
                         break;
                 }
@@ -336,8 +339,8 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
 
     private Object getStringOrDate(String s) {
         try {
-            DateFormat TIMESTAMP_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-            return TIMESTAMP_FORMAT.parse(s);
+            DateFormat timestampFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX");
+            return timestampFormat.parse(s);
         } catch (ParseException x) {
             return s;
         }
@@ -346,5 +349,9 @@ public class SimpleSearchQueryConverter implements SearchQueryConverter {
     @Override
     public String map(String attribute) {
         return hasText(attribute) ? mapper.mapToInternal(attribute) : attribute;
+    }
+
+    public String getJoinName() {
+        return mapper instanceof JoinAttributeNameMapper joinAttributeNameMapper ? joinAttributeNameMapper.getName() : UaaStringUtils.EMPTY_STRING;
     }
 }

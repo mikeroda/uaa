@@ -21,26 +21,17 @@ dependencies {
     implementation(libraries.springWeb)
     implementation(libraries.springSecurityCore)
     implementation(libraries.springSecurityWeb)
+    implementation(libraries.springSecurityConfig)
     implementation(libraries.springBootStarterMail)
-    implementation(libraries.owaspEsapi) {
-        transitive = false
-    }
-    implementation(libraries.springSecuritySaml) {
-        exclude(module: "bcprov-ext-jdk15on")
-        exclude(module: "xalan")
-    }
+    implementation(libraries.openSamlApi)
+    implementation(libraries.springSecuritySamlServiceProvider)
     implementation(libraries.jodaTime)
     implementation(libraries.xmlSecurity)
     implementation(libraries.springSessionJdbc)
 
-    implementation(libraries.springSecurityOauth) {
-        exclude(module: "commons-codec")
-        exclude(module: "jackson-mapper-asl")
-        exclude(module: "spring-security-web")
-    }
-
-    implementation(libraries.bouncyCastleProv)
-    implementation(libraries.bouncyCastlePkix)
+    implementation(libraries.bouncyCastleFipsProv)
+    implementation(libraries.bouncyCastleTlsFips)
+    implementation(libraries.bouncyCastlePkixFips)
 
     implementation(libraries.guava)
 
@@ -50,13 +41,13 @@ dependencies {
     implementation(libraries.thymeLeaf) {
         exclude(module: "ognl")
     }
-    implementation(libraries.thymeleafSpring5) {
+    implementation(libraries.thymeleafSpring) {
         exclude(module: "ognl")
     }
     implementation(libraries.thymeleafDialect) {
         exclude(module: "ognl")
     }
-    implementation(libraries.thymeleafExtrasSpringSecurity5) {
+    implementation(libraries.thymeleafExtrasSpringSecurity) {
         exclude(module: "ognl")
     }
 
@@ -69,15 +60,17 @@ dependencies {
     }
 
     implementation(libraries.hibernateValidator)
-    implementation(libraries.flywayCore)
-    implementation(libraries.mariaJdbcDriver)
+    implementation(libraries.flywayHsqlDb)
+    implementation(libraries.flywayMySql)
+    implementation(libraries.flywayPostgresql)
     implementation(libraries.hsqldb)
 
     implementation(libraries.snakeyaml)
+    implementation(libraries.velocity)
 
+    implementation(libraries.springWebMvc)
     implementation(libraries.springSecurityLdap)
     implementation(libraries.springLdapCore)
-    implementation(libraries.springLdapCoreTiger)
     implementation(libraries.apacheLdapApi) {
         exclude(module: "slf4j-api")
         exclude(module: "mina-core")
@@ -85,14 +78,8 @@ dependencies {
 
     implementation(libraries.passay)
 
-    implementation(libraries.velocity)
-    implementation(libraries.xerces)
-
     implementation(libraries.slf4jImpl)
     implementation(libraries.log4jCore)
-
-    implementation(libraries.javaxXmlBindApi)
-    implementation(libraries.glassfishJaxb)
 
     implementation(libraries.nimbusJwt)
     implementation(libraries.orgJson)
@@ -103,12 +90,12 @@ dependencies {
 
     testImplementation(libraries.springTest)
 
-    testImplementation(libraries.junit)
-    testImplementation(libraries.mockito)
-
+    testImplementation(libraries.bytebuddy)
+    testImplementation(libraries.bytebuddyagent)
     testImplementation(libraries.mockitoJunit5)
 
     testImplementation(libraries.postgresql)
+    testImplementation(libraries.mariaJdbcDriver)
 
     testImplementation(libraries.tomcatElApi)
     testImplementation(libraries.tomcatJasperEl)
@@ -116,6 +103,8 @@ dependencies {
 
     testImplementation(libraries.jsonPathAssert)
     testImplementation(libraries.guavaTestLib)
+    testImplementation(libraries.xmlUnit)
+    testImplementation(libraries.awaitility)
 
     implementation(libraries.commonsIo)
 }
@@ -123,11 +112,17 @@ dependencies {
 configurations.all {
     exclude(group: "org.beanshell", module: "bsh-core")
     exclude(group: "org.apache-extras.beanshell", module: "bsh")
-    exclude(group: "org.bouncycastle", module: "bcpkix-jdk15on")
-    exclude(group: "org.bouncycastle", module: "bcprov-jdk15on")
     exclude(group: "com.fasterxml.woodstox", module: "woodstox-core")
     exclude(group: "commons-beanutils", module: "commons-beanutils")
     exclude(group: "commons-collections", module: "commons-collections")
+
+    // Exclude non-FIPS bouncycastle libs, and use Shadow library for FIPS compliance
+    exclude(group: "org.bouncycastle", module: "bcpkix-jdk15on")
+    exclude(group: "org.bouncycastle", module: "bcprov-jdk15on")
+    exclude(group: "org.bouncycastle", module: "bcutil-jdk15on")
+    exclude(group: "org.bouncycastle", module: "bcprov-jdk18on")
+    exclude(group: "org.bouncycastle", module: "bcpkix-jdk18on")
+    exclude(group: "org.bouncycastle", module: "bcutil-jdk18on")
 }
 
 jar {
@@ -135,7 +130,7 @@ jar {
 }
 
 processResources {
-    //maven replaces project.artifactId in the log4j.properties file
+    //maven replaces project.artifactId in the log4j2.properties file
     //https://www.pivotaltracker.com/story/show/74344574
     filter { line -> line.contains('${project.artifactId}') ? line.replace('${project.artifactId}', 'cloudfoundry-identity-server') : line }
 }

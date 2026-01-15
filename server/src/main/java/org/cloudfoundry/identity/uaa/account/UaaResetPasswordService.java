@@ -27,7 +27,8 @@ import org.springframework.context.ApplicationEventPublisherAware;
 import org.springframework.core.io.support.ResourcePropertySource;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.provider.ClientDetails;
+import org.springframework.stereotype.Service;
+import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
 
 import java.sql.Timestamp;
 import java.util.Collections;
@@ -37,8 +38,9 @@ import java.util.Set;
 
 import static java.util.Collections.emptyList;
 import static org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY;
-import static org.springframework.util.StringUtils.isEmpty;
+import static org.cloudfoundry.identity.uaa.util.UaaStringUtils.isEmpty;
 
+@Service("resetPasswordService")
 public class UaaResetPasswordService implements ResetPasswordService, ApplicationEventPublisherAware {
 
     public static final int PASSWORD_RESET_LIFETIME = 30 * 60 * 1000;
@@ -49,16 +51,16 @@ public class UaaResetPasswordService implements ResetPasswordService, Applicatio
     private final ExpiringCodeStore expiringCodeStore;
     private final PasswordValidator passwordValidator;
     private final MultitenantClientServices clientDetailsService;
-    private ResourcePropertySource resourcePropertySource;
+    private final ResourcePropertySource resourcePropertySource;
     private final IdentityZoneManager identityZoneManager;
     private ApplicationEventPublisher publisher;
 
     public UaaResetPasswordService(ScimUserProvisioning scimUserProvisioning,
-                                   ExpiringCodeStore expiringCodeStore,
-                                   PasswordValidator passwordValidator,
-                                   MultitenantClientServices clientDetailsService,
-                                   ResourcePropertySource resourcePropertySource,
-                                   IdentityZoneManager identityZoneManager) {
+            ExpiringCodeStore expiringCodeStore,
+            PasswordValidator passwordValidator,
+            MultitenantClientServices clientDetailsService,
+            ResourcePropertySource resourcePropertySource,
+            IdentityZoneManager identityZoneManager) {
         this.scimUserProvisioning = scimUserProvisioning;
         this.expiringCodeStore = expiringCodeStore;
         this.passwordValidator = passwordValidator;
@@ -148,10 +150,10 @@ public class UaaResetPasswordService implements ResetPasswordService, Applicatio
             if (results.isEmpty()) {
                 throw new NotFoundException();
             } else {
-                throw new ConflictException(results.get(0).getId(), results.get(0).getPrimaryEmail());
+                throw new ConflictException(results.getFirst().getId(), results.getFirst().getPrimaryEmail());
             }
         }
-        ScimUser scimUser = results.get(0);
+        ScimUser scimUser = results.getFirst();
 
         PasswordChange change = new PasswordChange(scimUser.getId(), scimUser.getUserName(), scimUser.getPasswordLastModified(), clientId, redirectUri);
         String intent = FORGOT_PASSWORD_INTENT_PREFIX + scimUser.getId();
@@ -170,7 +172,7 @@ public class UaaResetPasswordService implements ResetPasswordService, Applicatio
     private boolean isUserModified(ScimUser user, String userName, Date passwordLastModified) {
         boolean modified = false;
         if (userName != null) {
-            modified = !(userName.equals(user.getUserName()));
+            modified = !userName.equals(user.getUserName());
         }
         if (passwordLastModified != null && (!modified)) {
             modified = user.getPasswordLastModified().getTime() != passwordLastModified.getTime();

@@ -6,7 +6,8 @@ import org.cloudfoundry.identity.uaa.ratelimiting.core.RateLimiterInternalExcept
 import org.cloudfoundry.identity.uaa.ratelimiting.core.http.RequestInfo;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
 import static org.mockito.Mockito.mock;
 
 class RateLimiterImplTest {
@@ -19,10 +20,10 @@ class RateLimiterImplTest {
         }
 
         @Override
-        public Limiter getLimiter( RequestInfo info ) {
+        public Limiter getLimiter(RequestInfo info) {
             return () -> {
-                if ( maxRequestsRemaining == null ) {
-                    throw new RateLimiterInternalException( "maxRequestsRemaining not set!" );
+                if (maxRequestsRemaining == null) {
+                    throw new RateLimiterInternalException("maxRequestsRemaining not set!");
                 }
                 return maxRequestsRemaining < 1;
             };
@@ -31,28 +32,27 @@ class RateLimiterImplTest {
 
     private final MockLimiterManager manager = new MockLimiterManager();
 
-    private final RateLimiterImpl rateLimiter = new RateLimiterImpl( manager );
+    private final RateLimiterImpl rateLimiter = new RateLimiterImpl(manager);
 
-    private final RequestInfo requestInfo = mock( RequestInfo.class );
+    private final RequestInfo requestInfo = mock(RequestInfo.class);
 
     @Test
     void internalExceptionTest() {
-        assertThrows( RateLimiterInternalException.class,
-                      () -> check( null ) ); // Force Error
+        assertThatExceptionOfType(RateLimiterInternalException.class).isThrownBy(() -> check(null)); // Force Error
     }
 
     @Test
     void dontLimitTest() {
-        assertFalse( check( 1 ) ); // still remaining requests -> Don't limit
+        assertThat(check(1)).isFalse(); // still remaining requests -> Don't limit
     }
 
     @Test
     void limitTest() {
-        assertTrue( check( 0 ) ); // No remaining requests -> Limit
+        assertThat(check(0)).isTrue(); // No remaining requests -> Limit
     }
 
-    boolean check( Integer maxRequestsRemaining ) {
+    boolean check(Integer maxRequestsRemaining) {
         manager.maxRequestsRemaining = maxRequestsRemaining;
-        return rateLimiter.getLimiter( requestInfo ).shouldLimit();
+        return rateLimiter.getLimiter(requestInfo).shouldLimit();
     }
 }

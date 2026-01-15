@@ -1,8 +1,5 @@
 import org.apache.tools.ant.filters.ReplaceTokens
 
-import java.nio.file.Files
-import java.nio.file.Paths
-
 buildscript {
     apply(from: "dependencies.gradle")
 
@@ -10,15 +7,13 @@ buildscript {
         mavenCentral()
         gradlePluginPortal()
         maven {
-            url("https://plugins.gradle.org/m2/")
+            url = uri("https://plugins.gradle.org/m2/")
         }
     }
 
     dependencies {
-        classpath(libraries.cargoGradlePlugin)
-        classpath(libraries.springDependencyMangementGradlePlugin)
+        classpath(libraries.springDependencyManagementGradlePlugin)
         classpath(libraries.springBootGradlePlugin)
-        classpath(libraries.testRetryPlugin)
         classpath(libraries.gradleJcocoPlugin)
         classpath(libraries.sonarqubePlugin)
     }
@@ -28,12 +23,8 @@ apply(from: "dependencies.gradle")
 
 def applicationPort = project.hasProperty('port') ? project.getProperty('port').toInteger() : 8080
 
-apply(plugin: "com.bmuschko.cargo")
-apply(plugin: "war")
-
 allprojects {
     apply(plugin: "io.spring.dependency-management")
-    apply(plugin: "org.gradle.test-retry")
     apply(plugin: "org.barfuin.gradle.jacocolog")
     apply(plugin: "org.sonarqube")
 
@@ -46,16 +37,21 @@ allprojects {
     repositories {
         mavenCentral()
         maven {
-            url("https://build.shibboleth.net/nexus/content/repositories/releases/")
+            url = uri("https://build.shibboleth.net/nexus/content/repositories/releases/")
         }
-        maven { url("https://repository.mulesoft.org/releases/") }
+        maven { url = uri("https://repository.mulesoft.org/releases/") }
     }
 }
 
+
 subprojects {
     apply(plugin: "java")
+    java {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
 
-    configurations.all {
+    configurations.configureEach {
         exclude(group: "org.hamcrest", module: "hamcrest-all")
         exclude(group: "org.hamcrest", module: "hamcrest-core")
         exclude(group: "org.hamcrest", module: "hamcrest-library")
@@ -64,73 +60,153 @@ subprojects {
         exclude(group: "org.apache.directory.server", module: "apacheds-protocol-ldap")
         exclude(group: "org.skyscreamer", module: "jsonassert")
         exclude(group: "com.vaadin.external.google", module: "android-json")
+        exclude(group: "com.unboundid.components", module: "json")
+
+        // Exclude opensaml-security-api and non-FIPS bouncycastle libs, and use Shadow library for FIPS compliance
+        exclude(group: "org.bouncycastle", module: "bcpkix-jdk15on")
+        exclude(group: "org.bouncycastle", module: "bcprov-jdk15on")
+        exclude(group: "org.bouncycastle", module: "bcutil-jdk15on")
+        exclude(group: "org.bouncycastle", module: "bcprov-jdk18on")
+        exclude(group: "org.bouncycastle", module: "bcpkix-jdk18on")
+        exclude(group: "org.bouncycastle", module: "bcutil-jdk18on")
+
+        resolutionStrategy {
+            resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+                if (details.requested.group == 'org.opensaml' && details.requested.name.startsWith("opensaml-")) {
+                    details.useVersion "${versions.opensaml}"
+                    details.because 'Spring Security 5.8.x allows OpenSAML 3 or 4. OpenSAML 3 has reached its end-of-life. Spring Security 6 drops support for 3, using 4.'
+                }
+            }
+        }
     }
 
     dependencies {
-        testImplementation(libraries.springBootStarterTest)
+        testImplementation(libraries.springBootStarterTest) {
+            exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+        }
         testImplementation(libraries.hamcrest)
         testImplementation(libraries.junit5JupiterApi)
         testImplementation(libraries.junit5JupiterParams)
-        testRuntimeOnly(libraries.junit5JupiterEngine)
-        testRuntimeOnly(libraries.junitVintageEngine)
+        testImplementation(libraries.junit5JupiterEngine)
         testImplementation(libraries.unboundIdLdapSdk)
+        testRuntimeOnly(libraries.jacocoAgent)
 
-        compileOnly("org.projectlombok:lombok")
-        annotationProcessor("org.projectlombok:lombok")
+        // Ensure test runtime dependencies are included
+        testRuntimeOnly('org.junit.platform:junit-platform-launcher')
+
+        compileOnly(libraries.lombok)
+        annotationProcessor(libraries.lombok)
     }
 
-    [compileJava, compileTestJava]*.options*.compilerArgs = ["-Xlint:none", "-nowarn"]
-
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    [compileJava, compileTestJava]*.options*.compilerArgs = ["-Xlint:none", "-nowarn", "-parameters"]
 
     test {
-        maxParallelForks = 1
         // when failFast = true AND retry is on, there is a serious issue:
         // gradle might stop the test run due to the failFast but still concludes with BUILD SUCCESSFUL (if the retry is successful)
         failFast = false
         useJUnitPlatform()
-        jvmArgs += ["-Xmx1024m", "-XX:+StartAttachListener", "-XX:+HeapDumpOnOutOfMemoryError", "-XX:HeapDumpPath=/var/log/uaa-tests.hprof"]
+        // Reduced from 1024m to 640m - unit tests don't need as much as integration tests
+        jvmArgs += ["-Xmx640m",
+                    "-XX:+StartAttachListener",
+                    "-XX:+HeapDumpOnOutOfMemoryError",
+                    "-XX:HeapDumpPath=/var/log/uaa-tests.hprof"
+        ]
 
-        retry {
-            def failOnPassedAfterRetrySystemProperty = Boolean.parseBoolean(
-                    System.getProperty("failOnPassedAfterRetry", "false"));
-            if (!failOnPassedAfterRetrySystemProperty)
-                logger.warn("retry: Flaky tests will not make the test run fail because failOnPassedAfterRetry is false.")
-
-            // Configure the retry extension
-            failOnPassedAfterRetry = failOnPassedAfterRetrySystemProperty
-            maxFailures = Integer.parseInt(System.getProperty("maxFailures", "3"))
-            maxRetries = Integer.parseInt(System.getProperty("maxRetries", "1"))
+        // Enable test timing to identify slow tests
+        // This helps debug CI performance issues
+        reports {
+            junitXml.required = true
+            html.required = true
         }
 
         testLogging {
-            events("skipped", "failed", "passed")
-            exceptionFormat("full")
+            events("failed")
+            exceptionFormat = "full"
+            // Set showStandardStreams=true to see all standard output from tests (there's a ton of it!)
+            showStandardStreams = false
+            showCauses = true
+            showExceptions = true
+            showStackTraces = true
+        }
 
-            // Uncomment the following line to see all standard output from tests (there's a ton of it!)
-            //showStandardStreams = true
+        // Add system property to enable detailed test timing
+        systemProperty("junit.jupiter.execution.timeout.default", System.getProperty("junit.jupiter.execution.timeout.default", "0"))
+
+        // Log slow tests to help identify bottlenecks
+        afterTest { descriptor, result ->
+            def duration = result.endTime - result.startTime
+            if (duration > 10000) { // 10 seconds
+                logger.warn("SLOW TEST: ${descriptor.className}.${descriptor.name} took ${duration}ms")
+            }
+        }
+
+        // Log summary of test execution times
+        afterSuite { descriptor, result ->
+            if (descriptor.parent == null) {
+                def duration = result.endTime - result.startTime
+                def testLabel = result.testCount == 1 ? "unit-test" : "unit-tests"
+                logger.lifecycle("[${project.name}] Completed ${result.testCount} ${testLabel} in ${duration}ms (passed=${result.successfulTestCount};failed=${result.failedTestCount};skipped=${result.skippedTestCount})")
+            }
         }
     }
 
-    task integrationTest(type: Test) {
-        dependsOn rootProject.cargoStartLocal
+    tasks.register('integrationTest', Test) {
+        dependsOn subprojects.integrationTest
+        
         useJUnitPlatform()
 
-        testLogging {
-            events("skipped", "failed", "passed")
-            exceptionFormat("full")
+        // This prevents integrationTests from hanging indefinitely
+        timeout = Duration.ofMinutes(180)
+        
+        // Integration test workers need same memory as unit tests
+        // Actual CI configuration is controlled via integration_tests.sh script
+        jvmArgs += ["-Xmx640m",
+                    "-XX:+StartAttachListener",
+                    "-XX:+HeapDumpOnOutOfMemoryError",
+                    "-XX:HeapDumpPath=/var/log/uaa-tests.hprof"
+        ]
 
-            // Uncomment the following line to see all standard output from tests (there's a ton of it!)
-            //showStandardStreams = true
+        // Enable JaCoCo for integration tests
+        jacoco {
+            enabled = true
+        }
+
+        testLogging {
+            events("failed")
+            exceptionFormat = "full"
+            // Set showStandardStreams=true to see all standard output from tests (there's a ton of it!)
+            showStandardStreams = false
+            showCauses = true
+            showExceptions = true
+            showStackTraces = true
+        }
+
+        // Add system property to enable detailed test timing
+        systemProperty("junit.jupiter.execution.timeout.default", System.getProperty("junit.jupiter.execution.timeout.default", "0"))
+
+        // Log slow tests to help identify bottlenecks
+        afterTest { descriptor, result ->
+            def duration = result.endTime - result.startTime
+            if (duration > 20000) { // 20 seconds
+                logger.warn("SLOW TEST: ${descriptor.className}.${descriptor.name} took ${duration}ms")
+            }
+        }
+
+        // Log summary of test execution times
+        afterSuite { descriptor, result ->
+            if (descriptor.parent == null) {
+                def duration = result.endTime - result.startTime
+                def testLabel = result.testCount == 1 ? "integration-test" : "integration-tests"
+                logger.lifecycle("[${project.name}] Completed ${result.testCount} ${testLabel} in ${duration}ms (passed=${result.successfulTestCount};failed=${result.failedTestCount};skipped=${result.skippedTestCount})")
+            }
         }
     }
 
-    task generateDocs() {}
+    tasks.register('generateDocs') {}
 
-    task allDeps(type: DependencyReportTask) {}
+    tasks.register('allDeps', DependencyReportTask) {}
 
-    task writeNewPom() {
+    tasks.register('writeNewPom') {
         doLast {
             pom {
                 project {
@@ -149,77 +225,10 @@ subprojects {
     repositories {
         mavenCentral()
         maven {
-            url("https://jitpack.io")
+            url = uri("https://jitpack.io")
         }
         maven {
-            url("https://repo.maven.apache.org/maven2")
-        }
-    }
-}
-
-cargo {
-    containerId = "tomcat9x"
-    port = applicationPort
-
-    if (JavaVersion.current() < JavaVersion.VERSION_17) {
-        throw new GradleException("This build must be run with Java version [ " + JavaVersion.VERSION_17 + " ] or greater. Your Java version is [ " + JavaVersion.current() + " ]")
-    }
-
-    deployable {
-        file = file("samples/api/build/libs/cloudfoundry-identity-api-" + version + ".war")
-        context = "api"
-    }
-
-    deployable {
-        file = file("samples/app/build/libs/cloudfoundry-identity-app-" + version + ".war")
-        context = "app"
-    }
-
-    deployable {
-        file = file("uaa/build/libs/cloudfoundry-identity-uaa-" + version + ".war")
-        context = "uaa"
-    }
-
-    local {
-        configHomeDir = file(Paths.get(System.getProperty("java.io.tmpdir") + "/uaa-${applicationPort}"))
-        startStopTimeout = Integer.parseInt(System.getProperty("startStopTimeout", "540000"))
-        rmiPort = applicationPort + 10
-
-        jvmArgs = ""
-        jvmArgs = String.format("%s -DCLOUDFOUNDRY_CONFIG_PATH='%s'", jvmArgs, file("scripts/cargo").getAbsolutePath())
-        jvmArgs = String.format("%s -Dlogging.config='%s'", jvmArgs, file("scripts/cargo/log4j2.properties").getAbsolutePath())
-        jvmArgs = String.format("%s -Dstatsd.enabled=true", jvmArgs)
-        String activeSpringProfiles = System.getProperty("spring.profiles.active", "").split(',');
-        if (activeSpringProfiles.contains("debugs") || Boolean.valueOf(System.getProperty("xdebugs"))) {
-            jvmArgs = String.format("%s -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005", jvmArgs)
-        }
-        else if (activeSpringProfiles.contains("debug") || Boolean.valueOf(System.getProperty("xdebug"))) {
-            jvmArgs = String.format("%s -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005", jvmArgs)
-        }
-
-        outputFile = file("uaa/build/reports/tests/uaa-server.log")
-        configFile {
-            files = files("scripts/cargo/tomcat-conf/context.xml")
-            toDir = "conf"
-        }
-
-        systemProperties {
-            property("SECRETS_DIR", System.getProperty("SECRETS_DIR", file("scripts/cargo").getAbsolutePath()))
-            property("spring.profiles.active", System.getProperty("spring.profiles.active", "default"))
-            property("metrics.perRequestMetrics", System.getProperty("metrics.perRequestMetrics", "true"))
-            property("smtp.host", "localhost")
-            property("smtp.port", 2525)
-            property("java.security.egd", "file:/dev/./urandom")
-        }
-
-        containerProperties {
-            property('cargo.tomcat.ajp.port', applicationPort + 20)
-        }
-
-        installer {
-            installUrl = "https://repo1.maven.org/maven2/org/apache/tomcat/tomcat/" + tomcatCargoVersion + "/tomcat-" + tomcatCargoVersion + ".tar.gz"
-            downloadDir = file("$buildDir/download")
-            extractDir = file("$buildDir/extract")
+            url = uri("https://repo.maven.apache.org/maven2")
         }
     }
 }
@@ -229,22 +238,20 @@ sonarqube {
         property "sonar.projectKey", "cloudfoundry-identity-parent"
         property "sonar.organization", "cloudfoundry-1"
         property "sonar.host.url", "https://sonarcloud.io"
-        property "sonar.exclusions", "samples/**/*.*,**/*Test.java,**/*Tests.java,**/*IT.java"
+        property "sonar.exclusions", "samples/**/*.*,**/*Test.java,**/*Tests.java,**/*IT.java,**/*SecurityConfiguration.java"
         property "sonar.java.source", JavaVersion.current()
     }
 }
 
 project.gradle.taskGraph.whenReady { TaskExecutionGraph graph ->
     project.allprojects.collect({ it.tasks.withType(Test) }).flatten().each {
-        it.systemProperty("spring.profiles.active", System.getProperty("spring.profiles.active", "default"))
+        it.systemProperty("spring.profiles.active", System.getProperty("spring.profiles.active", "hsqldb"))
         it.systemProperty("testId", System.getProperty("testId", ""))
     }
 }
 
-//task declarations
-task run(dependsOn: cargoRunLocal)
-
-task manifests(dependsOn: assemble, type: Copy) {
+tasks.register('manifests', Copy) {
+    dependsOn subprojects.assemble
     from("uaa/src/test/resources/sample-manifests") {
         include("**/*.yml")
         filter(ReplaceTokens,
@@ -258,20 +265,38 @@ task manifests(dependsOn: assemble, type: Copy) {
     into("build/sample-manifests")
 }
 
-task cleanCargoConfDir {
-    delete(file(System.getProperty("java.io.tmpdir") + "/cargo/uaa-${applicationPort}"))
-    try {
-        Files.createDirectory(Paths.get(System.getProperty("java.io.tmpdir") + "/uaa-${applicationPort}"))
-    } catch (ignored) {}
+tasks.register('cleanBootTomcatDir') {
+    String tomcatBase = file("scripts/boot/tomcat/").getAbsolutePath()
+    delete(java.nio.file.Path.of(tomcatBase))
+    new File(tomcatBase+"/work").mkdirs()
+    new File(tomcatBase+"/webapps").mkdirs()
 }
 
-task integrationTest(type: Test, dependsOn: subprojects.integrationTest) {
-    finalizedBy cargoStopLocal
+tasks.register('bootWarRun', JavaExec) {
+    dependsOn cleanBootTomcatDir
+    dependsOn subprojects.assemble
+    classpath = files(file("uaa/build/libs/cloudfoundry-identity-uaa-0.0.0.war"))
+    systemProperty("server.tomcat.basedir", file("scripts/boot/tomcat/").getAbsolutePath())
+    systemProperty("SECRETS_DIR", System.getProperty("SECRETS_DIR", file("scripts/boot").getAbsolutePath()))
+    systemProperty("spring.profiles.active", System.getProperty("spring.profiles.active", "hsqldb"))
+    systemProperty("metrics.perRequestMetrics", System.getProperty("metrics.perRequestMetrics", "true"))
+    systemProperty("smtp.host", "localhost")
+    systemProperty("smtp.port", 2525)
+    systemProperty("java.security.egd", "file:/dev/./urandom")
+    systemProperty("CLOUDFOUNDRY_CONFIG_PATH", file("scripts/boot").getAbsolutePath())
+    systemProperty("server.servlet.context-path", "/uaa")
+    systemProperty("statsd.enabled", "true")
+    systemProperty("logging.config", file("scripts/boot/log4j2.properties").getAbsolutePath())
 }
 
-// task dependencies
-assemble.dependsOn(subprojects.assemble)
-test.dependsOn(subprojects.test)
-test.mustRunAfter(integrationTest)
-cargoStartLocal.dependsOn(assemble)
-cargoRunLocal.dependsOn(cleanCargoConfDir, assemble)
+tasks.register('killUaa', Exec) {
+    workingDir './'
+    executable = 'scripts/kill_uaa.sh'
+}
+
+tasks.register('run') {
+    dependsOn killUaa
+    dependsOn ':cloudfoundry-identity-uaa:bootRun'
+    description = "Kills any running UAA and starts the application. Use -Pdebug to enable debug mode (starts immediately) or -Pdebugs to enable debug mode with suspend (waits for debugger). Default port 5005, configurable with -PdebugPort=<port>"
+    group = "application"
+}

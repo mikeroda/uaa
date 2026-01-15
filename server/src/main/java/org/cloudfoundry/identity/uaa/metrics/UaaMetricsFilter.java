@@ -5,10 +5,7 @@ import org.cloudfoundry.identity.uaa.util.TimeService;
 import org.cloudfoundry.identity.uaa.util.UaaYamlUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.jmx.export.annotation.ManagedMetric;
-import org.springframework.jmx.export.annotation.ManagedResource;
 import org.springframework.jmx.export.notification.NotificationPublisher;
 import org.springframework.jmx.export.notification.NotificationPublisherAware;
 import org.springframework.lang.NonNull;
@@ -17,10 +14,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.yaml.snakeyaml.Yaml;
 
 import javax.management.Notification;
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
@@ -29,12 +26,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
-@ManagedResource(
-        objectName = "cloudfoundry.identity:name=ServerRequests",
-        description = "UAA Performance Metrics"
-)
+
 public class UaaMetricsFilter extends OncePerRequestFilter implements UaaMetrics, NotificationPublisherAware {
     private static final int MAX_TIME = 3000;
     static final UrlGroup FALLBACK = new UrlGroup()
@@ -50,13 +43,13 @@ public class UaaMetricsFilter extends OncePerRequestFilter implements UaaMetrics
     private final Map<String, MetricsQueue> perUriMetrics;
     private final LinkedHashMap<AntPathRequestMatcher, UrlGroup> urlGroups;
     private boolean enabled = true;
-    private boolean perRequestMetrics = false;
+    private boolean perRequestMetrics;
 
     private NotificationPublisher notificationPublisher;
 
     public UaaMetricsFilter(
-            final @Value("${metrics.enabled:true}") boolean enabled,
-            final @Value("${metrics.perRequestMetrics:false}") boolean perRequestMetrics,
+            final boolean enabled,
+            final boolean perRequestMetrics,
             final TimeService timeService
     ) throws IOException {
         this.enabled = enabled;
@@ -126,7 +119,7 @@ public class UaaMetricsFilter extends OncePerRequestFilter implements UaaMetrics
                 if (entry.getKey().matches(request)) {
                     UrlGroup group = entry.getValue();
                     if (logger.isDebugEnabled()) {
-                        logger.debug(String.format("Successfully matched URI: %s to a group: %s", uri, group.getGroup()));
+                        logger.debug("Successfully matched URI: %s to a group: %s".formatted(uri, group.getGroup()));
                     }
                     return group;
                 }
@@ -138,25 +131,21 @@ public class UaaMetricsFilter extends OncePerRequestFilter implements UaaMetrics
     }
 
     @Override
-    @ManagedMetric(category = "performance", displayName = "Inflight Requests")
     public long getInflightCount() {
         return inflight.getInflightRequests();
     }
 
     @Override
-    @ManagedMetric(category = "performance", displayName = "Idle time (ms)")
     public long getIdleTime() {
         return inflight.getIdleTime();
     }
 
     @Override
-    @ManagedMetric(category = "performance", displayName = "Total server run time (ms)")
     public long getUpTime() {
         return inflight.getRunTime();
     }
 
     @Override
-    @ManagedMetric(category = "performance", displayName = "Server Requests for all URI Groups")
     public Map<String, String> getSummary() {
         Map<String, String> data = new HashMap<>();
         perUriMetrics.entrySet().forEach(entry -> data.put(entry.getKey(), JsonUtils.writeValueAsString(entry.getValue())));
@@ -164,7 +153,6 @@ public class UaaMetricsFilter extends OncePerRequestFilter implements UaaMetrics
     }
 
     @Override
-    @ManagedMetric(category = "performance", displayName = "Global Server Request Summary")
     public String getGlobals() {
         return JsonUtils.writeValueAsString(perUriMetrics.get(MetricsUtil.GLOBAL_GROUP));
     }
@@ -173,8 +161,8 @@ public class UaaMetricsFilter extends OncePerRequestFilter implements UaaMetrics
         ClassPathResource resource = new ClassPathResource("performance-url-groups.yml");
         Yaml yaml = UaaYamlUtils.createYaml();
         try (InputStream in = resource.getInputStream()) {
-            List<Map<String, Object>> load = (List<Map<String, Object>>) yaml.load(in);
-            return load.stream().map(UrlGroup::from).collect(Collectors.toList());
+            List<Map<String, Object>> load = yaml.load(in);
+            return load.stream().map(UrlGroup::from).toList();
         }
     }
 

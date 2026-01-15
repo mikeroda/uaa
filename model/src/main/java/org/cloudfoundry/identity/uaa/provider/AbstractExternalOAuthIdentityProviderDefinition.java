@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ * *****************************************************************************
  * Cloud Foundry
  * Copyright (c) [2009-2015] Pivotal Software, Inc. All Rights Reserved.
  * <p>
@@ -26,10 +27,20 @@ import java.util.Objects;
 @Getter
 @JsonIgnoreProperties(ignoreUnknown = true)
 public abstract class AbstractExternalOAuthIdentityProviderDefinition<T extends AbstractExternalOAuthIdentityProviderDefinition> extends ExternalIdentityProviderDefinition {
+
     public enum OAuthGroupMappingMode {
+        /**
+         * Evaluate the external group mappings with the external groups and only include the mapped internal groups in
+         * the UAA token.
+         */
         EXPLICITLY_MAPPED,
-        AS_SCOPES;
+
+        /**
+         * Directly include the external groups as scopes in the UAA token.
+         */
+        AS_SCOPES
     }
+
     private URL authUrl;
     private URL tokenUrl;
     private URL tokenKeyUrl;
@@ -38,7 +49,7 @@ public abstract class AbstractExternalOAuthIdentityProviderDefinition<T extends 
     private URL logoutUrl;
     private String linkText;
     private boolean showLinkText = true;
-    private boolean clientAuthInBody = false;
+    private boolean clientAuthInBody;
     private boolean skipSslValidation;
     private String relyingPartyId;
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -51,6 +62,9 @@ public abstract class AbstractExternalOAuthIdentityProviderDefinition<T extends 
     private OAuthGroupMappingMode groupMappingMode;
     private boolean pkce = true;
     private boolean performRpInitiatedLogout = true;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String authMethod;
+    private boolean cacheJwks = true;
 
     public T setAuthUrl(URL authUrl) {
         this.authUrl = authUrl;
@@ -141,6 +155,11 @@ public abstract class AbstractExternalOAuthIdentityProviderDefinition<T extends 
         return (T) this;
     }
 
+    public T setCacheJwks(final boolean cacheJwks) {
+        this.cacheJwks = cacheJwks;
+        return (T) this;
+    }
+
     public void setPkce(final boolean pkce) {
         this.pkce = pkce;
     }
@@ -149,40 +168,92 @@ public abstract class AbstractExternalOAuthIdentityProviderDefinition<T extends 
         this.performRpInitiatedLogout = performRpInitiatedLogout;
     }
 
+    public String getAuthMethod() {
+        return this.authMethod;
+    }
+
+    public void setAuthMethod(final String authMethod) {
+        this.authMethod = authMethod;
+    }
+
     @JsonIgnore
     public Class getParameterizedClass() {
         ParameterizedType parameterizedType =
-            (ParameterizedType)getClass().getGenericSuperclass();
+                (ParameterizedType) getClass().getGenericSuperclass();
         return (Class) parameterizedType.getActualTypeArguments()[0];
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        if (!super.equals(o)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
 
         AbstractExternalOAuthIdentityProviderDefinition<?> that = (AbstractExternalOAuthIdentityProviderDefinition<?>) o;
 
-        if (showLinkText != that.showLinkText) return false;
-        if (skipSslValidation != that.skipSslValidation) return false;
-        if (!Objects.equals(authUrl, that.authUrl)) return false;
-        if (!Objects.equals(tokenUrl, that.tokenUrl)) return false;
-        if (!Objects.equals(tokenKeyUrl, that.tokenKeyUrl)) return false;
-        if (!Objects.equals(tokenKey, that.tokenKey)) return false;
-        if (!Objects.equals(userInfoUrl, that.userInfoUrl)) return false;
-        if (!Objects.equals(logoutUrl, that.logoutUrl)) return false;
-        if (!Objects.equals(linkText, that.linkText)) return false;
-        if (!Objects.equals(relyingPartyId, that.relyingPartyId))
+        if (showLinkText != that.showLinkText) {
             return false;
-        if (!Objects.equals(relyingPartySecret, that.relyingPartySecret))
+        }
+        if (skipSslValidation != that.skipSslValidation) {
             return false;
-        if (!Objects.equals(scopes, that.scopes)) return false;
-        if (!Objects.equals(issuer, that.issuer)) return false;
-        if (!Objects.equals(userPropagationParameter, that.userPropagationParameter)) return false;
-        if (!Objects.equals(groupMappingMode, that.groupMappingMode)) return false;
-        if (pkce != that.pkce) return false;
-        if (performRpInitiatedLogout != that.performRpInitiatedLogout) return false;
+        }
+        if (!Objects.equals(authUrl, that.authUrl)) {
+            return false;
+        }
+        if (!Objects.equals(tokenUrl, that.tokenUrl)) {
+            return false;
+        }
+        if (!Objects.equals(tokenKeyUrl, that.tokenKeyUrl)) {
+            return false;
+        }
+        if (!Objects.equals(tokenKey, that.tokenKey)) {
+            return false;
+        }
+        if (!Objects.equals(userInfoUrl, that.userInfoUrl)) {
+            return false;
+        }
+        if (!Objects.equals(logoutUrl, that.logoutUrl)) {
+            return false;
+        }
+        if (!Objects.equals(linkText, that.linkText)) {
+            return false;
+        }
+        if (!Objects.equals(relyingPartyId, that.relyingPartyId)) {
+            return false;
+        }
+        if (!Objects.equals(relyingPartySecret, that.relyingPartySecret)) {
+            return false;
+        }
+        if (!Objects.equals(scopes, that.scopes)) {
+            return false;
+        }
+        if (!Objects.equals(issuer, that.issuer)) {
+            return false;
+        }
+        if (!Objects.equals(userPropagationParameter, that.userPropagationParameter)) {
+            return false;
+        }
+        if (!Objects.equals(groupMappingMode, that.groupMappingMode)) {
+            return false;
+        }
+        if (pkce != that.pkce) {
+            return false;
+        }
+        if (performRpInitiatedLogout != that.performRpInitiatedLogout) {
+            return false;
+        }
+        if (!Objects.equals(authMethod, that.authMethod)) {
+            return false;
+        }
+        if (cacheJwks != that.cacheJwks) {
+            return false;
+        }
         return Objects.equals(responseType, that.responseType);
 
     }
@@ -208,6 +279,8 @@ public abstract class AbstractExternalOAuthIdentityProviderDefinition<T extends 
         result = 31 * result + (responseType != null ? responseType.hashCode() : 0);
         result = 31 * result + (pkce ? 1 : 0);
         result = 31 * result + (performRpInitiatedLogout ? 1 : 0);
+        result = 31 * result + (authMethod != null ? authMethod.hashCode() : 0);
+        result = 31 * result + (cacheJwks ? 1 : 0);
         return result;
     }
 }

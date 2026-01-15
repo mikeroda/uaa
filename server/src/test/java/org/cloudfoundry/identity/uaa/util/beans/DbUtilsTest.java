@@ -1,7 +1,9 @@
 package org.cloudfoundry.identity.uaa.util.beans;
 
-import org.hsqldb.persist.HsqlDatabaseProperties;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -11,7 +13,8 @@ import org.springframework.jdbc.support.MetaDataAccessException;
 import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -34,22 +37,20 @@ class DbUtilsTest {
 
     @Test
     void canQuoteHsqldbIdentifiers() throws SQLException {
-        when(databaseMetaData.getDatabaseProductName()).thenReturn(HsqlDatabaseProperties.PRODUCT_NAME);
+        when(databaseMetaData.getURL()).thenReturn("jdbc:hsqldb:mem:uaa");
 
         String quotedIdentifier = dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate);
-
-        assertEquals(IDENTIFIER_NAME, quotedIdentifier);
+        assertThat(quotedIdentifier).isEqualTo(IDENTIFIER_NAME);
     }
 
     @Test
     void canCacheForHsqldb() throws SQLException {
-        when(databaseMetaData.getDatabaseProductName())
-                .thenReturn(HsqlDatabaseProperties.PRODUCT_NAME, "SHOULD NOT SEE THIS");
+        when(databaseMetaData.getURL())
+                .thenReturn("jdbc:hsqldb:mem:uaa", "SHOULD NOT SEE THIS");
         dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate);
 
         String subsequentQuotedIdentifier = dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate);
-
-        assertEquals(IDENTIFIER_NAME, subsequentQuotedIdentifier);
+        assertThat(subsequentQuotedIdentifier).isEqualTo(IDENTIFIER_NAME);
     }
 
     @Nested
@@ -57,8 +58,8 @@ class DbUtilsTest {
     class nonHsqldbTests {
         @BeforeEach
         void setup() throws SQLException {
-            when(databaseMetaData.getDatabaseProductName())
-                    .thenReturn("Anything but" + HsqlDatabaseProperties.PRODUCT_NAME);
+            when(databaseMetaData.getURL())
+                    .thenReturn("Anything but the h-s-q-l-d-b");
         }
 
         @Test
@@ -66,8 +67,7 @@ class DbUtilsTest {
             when(databaseMetaData.getIdentifierQuoteString()).thenReturn(BACKTICK);
 
             String quotedIdentifier = dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate);
-
-            assertEquals(BACKTICK + IDENTIFIER_NAME + BACKTICK, quotedIdentifier);
+            assertThat(quotedIdentifier).isEqualTo(BACKTICK + IDENTIFIER_NAME + BACKTICK);
         }
 
         @Test
@@ -75,8 +75,7 @@ class DbUtilsTest {
             when(databaseMetaData.getIdentifierQuoteString()).thenReturn(DOUBLE_QUOTE);
 
             String quotedIdentifier = dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate);
-
-            assertEquals(DOUBLE_QUOTE + IDENTIFIER_NAME + DOUBLE_QUOTE, quotedIdentifier);
+            assertThat(quotedIdentifier).isEqualTo(DOUBLE_QUOTE + IDENTIFIER_NAME + DOUBLE_QUOTE);
         }
 
         @Test
@@ -85,8 +84,7 @@ class DbUtilsTest {
             dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate);
 
             String subsequentQuotedIdentifier = dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate);
-
-            assertEquals(BACKTICK + IDENTIFIER_NAME + BACKTICK, subsequentQuotedIdentifier);
+            assertThat(subsequentQuotedIdentifier).isEqualTo(BACKTICK + IDENTIFIER_NAME + BACKTICK);
         }
 
         @ParameterizedTest
@@ -94,17 +92,13 @@ class DbUtilsTest {
         @NullSource
         void rejectsInvalidQuoteStrings(String quoteString) throws SQLException {
             when(databaseMetaData.getIdentifierQuoteString()).thenReturn(quoteString);
-
-            Assertions.assertThrows(Throwable.class,
-                    () -> dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate));
+            assertThatExceptionOfType(Throwable.class).isThrownBy(() -> dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate));
         }
 
         @Test
         void abortsWhenCannotGetMetaData() throws MetaDataAccessException {
             when(metaDataExtractor.extractDatabaseMetaData(any())).thenThrow(MetaDataAccessException.class);
-
-            Assertions.assertThrows(RuntimeException.class,
-                    () -> dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate));
+            assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> dbUtils.getQuotedIdentifier(IDENTIFIER_NAME, jdbcTemplate));
         }
     }
 }

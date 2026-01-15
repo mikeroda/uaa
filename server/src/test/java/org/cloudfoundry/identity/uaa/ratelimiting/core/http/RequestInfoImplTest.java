@@ -1,78 +1,70 @@
 package org.cloudfoundry.identity.uaa.ratelimiting.core.http;
 
-import javax.servlet.http.HttpServletRequest;
-
-import org.hamcrest.core.IsIterableContaining;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
+import jakarta.servlet.http.HttpServletRequest;
 import java.security.Principal;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.Enumeration;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class RequestInfoImplTest {
 
-    HttpServletRequest mockHSRequest = mock( HttpServletRequest.class );
+    HttpServletRequest mockHSRequest = mock(HttpServletRequest.class);
 
     @Test
     void from_getServletPath() {
-        RequestInfo requestInfo = RequestInfoImpl.from( null );
-        assertNotNull( requestInfo );
-        assertEquals( RequestInfoImpl.NO_HTTP_SERVLET_REQUEST_TO_PROXY, requestInfo.getServletPath() );
-        assertNull(requestInfo.getAuthorizationHeader());
-        assertNull(requestInfo.getClientIP());
+        RequestInfo requestInfo = RequestInfoImpl.from(null);
+        assertThat(requestInfo).isNotNull();
+        assertThat(requestInfo.getServletPath()).isEqualTo(RequestInfoImpl.NO_HTTP_SERVLET_REQUEST_TO_PROXY);
+        assertThat(requestInfo.getAuthorizationHeader()).isNull();
+        assertThat(requestInfo.getClientIP()).isNull();
 
-        when(mockHSRequest.getServletPath()).thenReturn( " Mocked " );
-        requestInfo = RequestInfoImpl.from( mockHSRequest );
-        assertNotNull( requestInfo );
-        assertEquals( " Mocked ", requestInfo.getServletPath() ); // No cleaning!
+        when(mockHSRequest.getServletPath()).thenReturn(" Mocked ");
+        requestInfo = RequestInfoImpl.from(mockHSRequest);
+        assertThat(requestInfo).isNotNull();
+        assertThat(requestInfo.getServletPath()).isEqualTo(" Mocked "); // No cleaning!
     }
 
     @Test
     void getAuthorizationHeader() {
-        when(mockHSRequest.getHeader("Authorization")).thenReturn( "Mocking Bearer " );
-        RequestInfo requestInfo = RequestInfoImpl.from( mockHSRequest );
-        assertNotNull( requestInfo );
-        assertEquals( "Mocking Bearer", requestInfo.getAuthorizationHeader() );
+        when(mockHSRequest.getHeader("Authorization")).thenReturn("Mocking Bearer ");
+        RequestInfo requestInfo = RequestInfoImpl.from(mockHSRequest);
+        assertThat(requestInfo).isNotNull();
+        assertThat(requestInfo.getAuthorizationHeader()).isEqualTo("Mocking Bearer");
     }
 
     @Test
     void getClientIP_X_Client() {
-        when(mockHSRequest.getHeader("X-Client-IP")).thenReturn( "Mocked-IP-C " );
-        when(mockHSRequest.getHeader("X-Real-IP")).thenReturn( "Mocked-IP-R " );
-        when(mockHSRequest.getHeader("X-Forwarded-For")).thenReturn( "Mocked-IP-FF0, Mocked-IP-FF1" );
-        RequestInfo requestInfo = RequestInfoImpl.from( mockHSRequest );
-        assertNotNull( requestInfo );
-        assertEquals( "Mocked-IP-C", requestInfo.getClientIP() );
+        when(mockHSRequest.getHeader("X-Client-IP")).thenReturn("Mocked-IP-C ");
+        when(mockHSRequest.getHeader("X-Real-IP")).thenReturn("Mocked-IP-R ");
+        when(mockHSRequest.getHeader("X-Forwarded-For")).thenReturn("Mocked-IP-FF0, Mocked-IP-FF1");
+        RequestInfo requestInfo = RequestInfoImpl.from(mockHSRequest);
+        assertThat(requestInfo).isNotNull();
+        assertThat(requestInfo.getClientIP()).isEqualTo("Mocked-IP-C");
     }
 
     @Test
     void getClientIP_X_Real() {
-        when(mockHSRequest.getHeader("X-Client-IP")).thenReturn( " " );
-        when(mockHSRequest.getHeader("X-Real-IP")).thenReturn( "Mocked-IP-R " );
-        when(mockHSRequest.getHeader("X-Forwarded-For")).thenReturn( "Mocked-IP-FF0 , Mocked-IP-FF1" );
-        RequestInfo requestInfo = RequestInfoImpl.from( mockHSRequest );
-        assertNotNull( requestInfo );
-        assertEquals( "Mocked-IP-R", requestInfo.getClientIP() );
+        when(mockHSRequest.getHeader("X-Client-IP")).thenReturn(" ");
+        when(mockHSRequest.getHeader("X-Real-IP")).thenReturn("Mocked-IP-R ");
+        when(mockHSRequest.getHeader("X-Forwarded-For")).thenReturn("Mocked-IP-FF0 , Mocked-IP-FF1");
+        RequestInfo requestInfo = RequestInfoImpl.from(mockHSRequest);
+        assertThat(requestInfo).isNotNull();
+        assertThat(requestInfo.getClientIP()).isEqualTo("Mocked-IP-R");
     }
 
     @Test
     void getClientIP_X_Forwarded() {
-        when(mockHSRequest.getHeader("X-Client-IP")).thenReturn( " " );
-        when(mockHSRequest.getHeader("X-Real-IP")).thenReturn( " " );
-        when(mockHSRequest.getHeader("X-Forwarded-For")).thenReturn( "Mocked-IP-FF0 , Mocked-IP-FF1" );
-        RequestInfo requestInfo = RequestInfoImpl.from( mockHSRequest );
-        assertNotNull( requestInfo );
-        assertEquals( "Mocked-IP-FF0", requestInfo.getClientIP() );
+        when(mockHSRequest.getHeader("X-Client-IP")).thenReturn(" ");
+        when(mockHSRequest.getHeader("X-Real-IP")).thenReturn(" ");
+        when(mockHSRequest.getHeader("X-Forwarded-For")).thenReturn("Mocked-IP-FF0 , Mocked-IP-FF1");
+        RequestInfo requestInfo = RequestInfoImpl.from(mockHSRequest);
+        assertThat(requestInfo).isNotNull();
+        assertThat(requestInfo.getClientIP()).isEqualTo("Mocked-IP-FF0");
     }
 
     @Test
@@ -81,8 +73,8 @@ class RequestInfoImplTest {
         when(mockRequest.getContextPath()).thenReturn("/testContext");
         when(mockRequest.getServletPath()).thenReturn("/testServlet");
         when(mockRequest.getHeader("Authorization")).thenReturn("Bearer eyasdf");
-        when(mockRequest.getHeaders("authorization")).thenReturn(Collections.enumeration(Arrays.asList("Bearer eyasdf")));
-        when(mockRequest.getHeaderNames()).thenReturn(Collections.enumeration(Arrays.asList("Authorization", "X-Forwarded-For")));
+        when(mockRequest.getHeaders("authorization")).thenReturn(Collections.enumeration(List.of("Bearer eyasdf")));
+        when(mockRequest.getHeaderNames()).thenReturn(Collections.enumeration(List.of("Authorization", "X-Forwarded-For")));
         Principal principal = mock(Principal.class);
         when(mockRequest.getUserPrincipal()).thenReturn(principal);
         when(mockRequest.getAuthType()).thenReturn("someType");
@@ -92,33 +84,34 @@ class RequestInfoImplTest {
         when(mockRequest.getRemoteUser()).thenReturn("fake@example.org");
         RequestInfoImpl request = (RequestInfoImpl) RequestInfoImpl.from(mockRequest);
 
-        assertEquals("/testServlet", request.getServletPath());
-        assertEquals("/testContext", request.getContextPath());
-        assertEquals("Bearer eyasdf", request.getAuthorizationHeader());
-        assertTrue(request.hasHeaderNames());
-        assertThat(request.getHeaderNames(), IsIterableContaining.hasItems("Authorization","X-Forwarded-For"));
-        assertTrue(request.hasHeaders("Authorization"));
-        assertFalse(request.hasHeaders("X-Real-IP"));
-        assertThat(request.getHeaders("Authorization"), IsIterableContaining.hasItems("Bearer eyasdf"));
-        assertEquals("Bearer eyasdf", request.getHeader("Authorization"));
-        assertEquals(principal, request.getPrincipal());
-        assertEquals("someType",request.getAuthType());
-        assertEquals("GET",request.getMethod());
-        assertEquals("requestURI",request.getRequestURI());
-        assertEquals("127.0.0.1",request.getRemoteAddr());
-        assertEquals("fake@example.org",request.getRemoteUser());
+        assertThat(request.getServletPath()).isEqualTo("/testServlet");
+        assertThat(request.getContextPath()).isEqualTo("/testContext");
+        assertThat(request.getAuthorizationHeader()).isEqualTo("Bearer eyasdf");
+        assertThat(request.hasHeaderNames()).isTrue();
+        assertThat(request.getHeaderNames()).contains("Authorization", "X-Forwarded-For");
+        assertThat(request.hasHeaders("Authorization")).isTrue();
+        assertThat(request.hasHeaders("X-Real-IP")).isFalse();
+        assertThat(request.getHeaders("Authorization")).contains("Bearer eyasdf");
+        assertThat(request.getHeader("Authorization")).isEqualTo("Bearer eyasdf");
+        assertThat(request.getPrincipal()).isEqualTo(principal);
+        assertThat(request.getAuthType()).isEqualTo("someType");
+        assertThat(request.getMethod()).isEqualTo("GET");
+        assertThat(request.getRequestURI()).isEqualTo("requestURI");
+        assertThat(request.getRemoteAddr()).isEqualTo("127.0.0.1");
+        assertThat(request.getRemoteUser()).isEqualTo("fake@example.org");
 
         String toString = request.toString();
-        assertThat(toString, containsString("authType='someType'"));
-        assertThat(toString, containsString("contextPath='/testContext'"));
-        assertThat(toString, containsString("method='GET'"));
-        assertThat(toString, containsString("requestURI='requestURI'"));
-        assertThat(toString, containsString("remoteAddr='127.0.0.1'"));
-        assertThat(toString, containsString("remoteUser='fake@example.org'"));
-        assertThat(toString, containsString("servletPath='/testServlet'"));
-        assertThat(toString, containsString("principal=")); //No details as Mock object is used
-        assertThat(toString, containsString("hasHeaderNames=true"));
-        assertThat(toString, containsString("headerNames=[Authorization, X-Forwarded-For]"));
-        assertThat(toString, containsString("header:Authorization=Bearer eyasdf"));
+        assertThat(toString).contains("authType='someType'")
+                .contains("contextPath='/testContext'")
+                .contains("method='GET'")
+                .contains("requestURI='requestURI'")
+                .contains("remoteAddr='127.0.0.1'")
+                .contains("remoteUser='fake@example.org'")
+                .contains("servletPath='/testServlet'")
+                .contains("principal=")
+                //No details as Mock object are used
+                .contains("hasHeaderNames=true")
+                .contains("headerNames=[Authorization, X-Forwarded-For]")
+                .contains("header:Authorization=Bearer eyasdf");
     }
 }

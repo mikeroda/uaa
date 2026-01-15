@@ -3,7 +3,6 @@ package org.cloudfoundry.identity.uaa.account;
 import org.cloudfoundry.identity.uaa.codestore.ExpiringCode;
 import org.cloudfoundry.identity.uaa.codestore.ExpiringCodeStore;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
-import org.cloudfoundry.identity.uaa.login.util.RandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.scim.ScimMeta;
 import org.cloudfoundry.identity.uaa.scim.ScimUser;
 import org.cloudfoundry.identity.uaa.scim.ScimUserProvisioning;
@@ -13,6 +12,7 @@ import org.cloudfoundry.identity.uaa.scim.test.JsonObjectMatcherUtils;
 import org.cloudfoundry.identity.uaa.scim.validate.PasswordValidator;
 import org.cloudfoundry.identity.uaa.extensions.PollutionPreventionExtension;
 import org.cloudfoundry.identity.uaa.test.MockAuthentication;
+import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
@@ -20,6 +20,8 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.core.io.support.ResourcePropertySource;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -64,7 +66,7 @@ class PasswordResetEndpointTest {
         mockExpiringCodeStore = mock(ExpiringCodeStore.class);
         mockPasswordValidator = mock(PasswordValidator.class);
 
-        RandomValueStringGenerator randomValueStringGenerator = new RandomValueStringGenerator();
+        AlphanumericRandomValueStringGenerator randomValueStringGenerator = new AlphanumericRandomValueStringGenerator();
         currentZoneId = "currentZoneId-" + randomValueStringGenerator.generate();
         IdentityZoneManager mockIdentityZoneManager = mock(IdentityZoneManager.class);
         when(mockIdentityZoneManager.getCurrentIdentityZoneId()).thenReturn(currentZoneId);
@@ -92,14 +94,15 @@ class PasswordResetEndpointTest {
                         anyString()
                 )
         )
-                .thenReturn(new ExpiringCode("secret_code", new Timestamp(System.currentTimeMillis() + UaaResetPasswordService.PASSWORD_RESET_LIFETIME), "id001", null));
+        .thenReturn(new ExpiringCode("secret_code", new Timestamp(System.currentTimeMillis() + UaaResetPasswordService.PASSWORD_RESET_LIFETIME), "id001", null));
 
         when(mockExpiringCodeStore.generateCode(eq(JsonUtils.writeValueAsString(change)), any(Timestamp.class), anyString(), anyString()))
                 .thenReturn(new ExpiringCode("secret_code", new Timestamp(System.currentTimeMillis() + UaaResetPasswordService.PASSWORD_RESET_LIFETIME), JsonUtils.writeValueAsString(change), null));
     }
 
-    @Test
-    void passwordResetWithClientIdAndRedirectUri() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"/password_resets", "/password_resets/"})
+    void passwordResetWithClientIdAndRedirectUri(String url) throws Exception {
         String email = "user@example.com";
         String clientId = "test-client";
         String redirectUri = "redirect.example.com";
@@ -116,7 +119,7 @@ class PasswordResetEndpointTest {
         when(mockExpiringCodeStore.generateCode(anyString(), any(Timestamp.class), anyString(), anyString()))
                 .thenReturn(new ExpiringCode("secret_code", new Timestamp(System.currentTimeMillis() + UaaResetPasswordService.PASSWORD_RESET_LIFETIME), JsonUtils.writeValueAsString(change), null));
 
-        MockHttpServletRequestBuilder post = post("/password_resets")
+        MockHttpServletRequestBuilder post = post(url)
                 .contentType(APPLICATION_JSON)
                 .param("client_id", clientId)
                 .param("redirect_uri", redirectUri)
@@ -265,8 +268,9 @@ class PasswordResetEndpointTest {
                 .andExpect(status().isConflict());
     }
 
-    @Test
-    void changingAPasswordWithAValidCode() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"/password_change", "/password_change/"})
+    void changingAPasswordWithAValidCode(String url) throws Exception {
         ExpiringCode code = new ExpiringCode("secret_code", new Timestamp(System.currentTimeMillis() + UaaResetPasswordService.PASSWORD_RESET_LIFETIME),
                 "{\"user_id\":\"eyedee\",\"username\":\"user@example.com\",\"passwordModifiedTime\":null,\"client_id\":\"\",\"redirect_uri\":\"\"}", null);
         when(mockExpiringCodeStore.retrieveCode("secret_code", currentZoneId)).thenReturn(code);
@@ -278,7 +282,7 @@ class PasswordResetEndpointTest {
         ExpiringCode autologinCode = new ExpiringCode("autologin-code", new Timestamp(System.currentTimeMillis() + 5 * 60 * 1000), "data", AUTOLOGIN.name());
         when(mockExpiringCodeStore.generateCode(anyString(), any(Timestamp.class), eq(AUTOLOGIN.name()), anyString())).thenReturn(autologinCode);
 
-        MockHttpServletRequestBuilder post = post("/password_change")
+        MockHttpServletRequestBuilder post = post(url)
                 .contentType(APPLICATION_JSON)
                 .content("{\"code\":\"secret_code\",\"new_password\":\"new_secret\"}")
                 .accept(APPLICATION_JSON);

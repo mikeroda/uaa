@@ -1,14 +1,7 @@
 package org.cloudfoundry.identity.uaa.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.hamcrest.CoreMatchers;
-import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
-import org.hamcrest.collection.IsIterableContainingInOrder;
-import org.hamcrest.collection.IsMapContaining;
-import org.hamcrest.collection.IsMapWithSize;
-import org.junit.Assert;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -21,17 +14,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.HamcrestCondition.matching;
 
 class UaaClientDetailsTest {
 
-  @Nested
+    @Nested
     class Creation {
         private UaaClientDetails testClient;
 
@@ -50,58 +39,54 @@ class UaaClientDetailsTest {
         void copiesUaaBaseClientDetails() {
             testClient.setClientSecret("secret");
             UaaClientDetails copy = new UaaClientDetails(testClient);
-            MatcherAssert.assertThat(copy, CoreMatchers.is(
-                    UaaClientDetailsMatcher.aUaaClientDetails()
-                            .withClientId("test")
-                            .withClientSecret("secret")
-                            .withScope(IsIterableContainingInOrder.contains("test.none"))
-                            .withResourceIds(Matchers.emptyIterable())
-            ));
+            assertThat(copy).is(matching(UaaClientDetailsMatcher.aUaaClientDetails()
+                    .withClientId("test")
+                    .withClientSecret("secret")
+                    .withScope(Matchers.contains("test.none"))
+                    .withResourceIds(Matchers.emptyIterable())));
 
             List<String> authorities = copy.getAuthorities().stream()
                     .map(GrantedAuthority::getAuthority)
-                    .collect(Collectors.toList());
-            MatcherAssert.assertThat(authorities, IsIterableContainingInOrder.contains("test.admin"));
+                    .toList();
+            assertThat(authorities).containsExactly("test.admin");
         }
 
         @Test
         void copiesAdditionalInformation() {
             testClient.setAdditionalInformation(Collections.singletonMap("key", "value"));
             UaaClientDetails copy = new UaaClientDetails(testClient);
-            MatcherAssert.assertThat(copy, CoreMatchers.is(
-                    UaaClientDetailsMatcher.aUaaClientDetails()
-                            .withAdditionalInformation(Matchers.allOf(IsMapWithSize.aMapWithSize(1), IsMapContaining.hasEntry("key", "value")))
-            ));
+            assertThat(copy).is(matching(UaaClientDetailsMatcher.aUaaClientDetails()
+                    .withAdditionalInformation(Matchers.allOf(Matchers.aMapWithSize(1), Matchers.hasEntry("key", "value")))));
         }
 
         @Test
-        void testClientJwtConfig() {
-          UaaClientDetails copy = new UaaClientDetails(testClient);
-          copy.setClientJwtConfig("test");
-          Assertions.assertEquals("test", copy.getClientJwtConfig());
+        void clientJwtConfig() {
+            UaaClientDetails copy = new UaaClientDetails(testClient);
+            copy.setClientJwtConfig("test");
+            assertThat(copy.getClientJwtConfig()).isEqualTo("test");
         }
 
         @Test
-        void testEquals() {
-          UaaClientDetails copy = new UaaClientDetails(testClient);
-          UaaClientDetails copy2 = new UaaClientDetails(testClient);
-          copy.setClientJwtConfig("test");
-          assertNotEquals(copy, copy2);
-          assertNotEquals(copy, new UaaClientDetails());
-          copy.setClientJwtConfig(null);
-          Assertions.assertEquals(copy, copy2);
-          Assertions.assertEquals(copy, copy);
-          assertNotEquals(copy, new UaaClientDetails());
+        void equals() {
+            UaaClientDetails copy = new UaaClientDetails(testClient);
+            UaaClientDetails copy2 = new UaaClientDetails(testClient);
+            copy.setClientJwtConfig("test");
+            assertThat(copy2).isNotEqualTo(copy);
+            assertThat(new UaaClientDetails()).isNotEqualTo(copy);
+            copy.setClientJwtConfig(null);
+            assertThat(copy2).isEqualTo(copy);
+            assertThat(copy).isEqualTo(copy);
+            assertThat(new UaaClientDetails()).isNotEqualTo(copy);
         }
 
         @Test
         void testHashCode() {
-          UaaClientDetails copy = new UaaClientDetails(testClient);
-          UaaClientDetails copy2 = new UaaClientDetails(testClient.getClientId(), "",
-              "test.none", "", "test.admin", null);
-          Assertions.assertEquals(copy.hashCode(), copy2.hashCode());
-          copy.setClientJwtConfig("test");
-          assertNotEquals(copy.hashCode(), copy2.hashCode());
+            UaaClientDetails copy = new UaaClientDetails(testClient);
+            UaaClientDetails copy2 = new UaaClientDetails(testClient.getClientId(), "",
+                    "test.none", "", "test.admin", null);
+            assertThat(copy2).hasSameHashCodeAs(copy);
+            copy.setClientJwtConfig("test");
+            assertThat(copy2.hashCode()).isNotEqualTo(copy.hashCode());
         }
     }
 
@@ -111,226 +96,224 @@ class UaaClientDetailsTest {
         void splitsScopesWhichIncludeAComma() {
             UaaClientDetails client = new UaaClientDetails(new UaaClientDetails());
             client.setScope(Collections.singleton("foo,bar"));
-            MatcherAssert.assertThat(client, CoreMatchers.is(
-                    UaaClientDetailsMatcher.aUaaClientDetails().withScope(Matchers.containsInAnyOrder("foo", "bar"))
-            ));
+            assertThat(client).is(matching(UaaClientDetailsMatcher.aUaaClientDetails().withScope(Matchers.containsInAnyOrder("foo", "bar"))));
         }
     }
 
-  @Nested
-  class BaseClientDetails {
-    @Test
-    void testBaseClientDetailsDefaultConstructor() {
-      UaaClientDetails details = new UaaClientDetails();
-      Assert.assertEquals("[]", details.getResourceIds().toString());
-      Assert.assertEquals("[]", details.getScope().toString());
-      Assert.assertEquals("[]", details.getAuthorizedGrantTypes().toString());
-      Assert.assertEquals("[]", details.getAuthorities().toString());
+    @Nested
+    class BaseClientDetails {
+        @Test
+        void baseClientDetailsDefaultConstructor() {
+            UaaClientDetails details = new UaaClientDetails();
+            assertThat(details.getResourceIds()).hasToString("[]");
+            assertThat(details.getScope()).hasToString("[]");
+            assertThat(details.getAuthorizedGrantTypes()).hasToString("[]");
+            assertThat(details.getAuthorities()).hasToString("[]");
+        }
+
+        @Test
+        void baseClientDetailsConvenienceConstructor() {
+            UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
+            assertThat(details.getResourceIds()).hasToString("[]");
+            assertThat(new TreeSet<>(details.getScope())).hasToString("[bar, foo]");
+            assertThat(details.getAuthorizedGrantTypes()).hasToString("[authorization_code]");
+            assertThat(details.getAuthorities()).hasToString("[ROLE_USER]");
+        }
+
+        @Test
+        void baseClientDetailsAutoApprove() {
+            UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
+            details.setAutoApproveScopes(StringUtils.commaDelimitedListToSet("read,write"));
+            assertThat(details.isAutoApprove("read")).isTrue();
+        }
+
+        @Test
+        void baseClientDetailsImplicitAutoApprove() {
+            UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
+            details.setAutoApproveScopes(StringUtils.commaDelimitedListToSet("true"));
+            assertThat(details.isAutoApprove("read")).isTrue();
+        }
+
+        @Test
+        void baseClientDetailsNoAutoApprove() {
+            UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
+            details.setAutoApproveScopes(StringUtils.commaDelimitedListToSet("none"));
+            assertThat(details.isAutoApprove("read")).isFalse();
+        }
+
+        @Test
+        void baseClientDetailsNullAutoApprove() {
+            UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
+            assertThat(details.isAutoApprove("read")).isFalse();
+        }
+
+        @Test
+        void jsonSerialize() throws Exception {
+            UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
+            details.setClientId("foo");
+            details.setClientSecret("bar");
+            String value = new ObjectMapper().writeValueAsString(details);
+            assertThat(value).contains("client_id")
+                    .contains("client_secret")
+                    .contains("authorized_grant_types")
+                    .contains("[\"ROLE_USER\"]");
+        }
+
+        @Test
+        void jsonSerializeAdditionalInformation() throws Exception {
+            UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
+            details.setClientId("foo");
+            details.setAdditionalInformation(Collections.singletonMap("foo", "bar"));
+            String value = new ObjectMapper().writeValueAsString(details);
+            assertThat(value).contains("\"foo\":\"bar\"");
+        }
+
+        @Test
+        void jsonDeserialize() throws Exception {
+            String value = "{\"foo\":\"bar\",\"client_id\":\"foo\",\"scope\":[\"bar\",\"foo\"],\"authorized_grant_types\":[\"authorization_code\"],\"authorities\":[\"ROLE_USER\"]}";
+            UaaClientDetails details = new ObjectMapper().readValue(value, UaaClientDetails.class);
+            UaaClientDetails expected = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
+            expected.setAdditionalInformation(Collections.singletonMap("foo", (Object) "bar"));
+            assertThat(details).isEqualTo(expected);
+        }
+
+        @Test
+        void jsonDeserializeWithArraysAsStrings() throws Exception {
+            // Collection values can be deserialized from space or comma-separated lists
+            String value = "{\"foo\":\"bar\",\"client_id\":\"foo\",\"scope\":\"bar  foo\",\"authorized_grant_types\":\"authorization_code\",\"authorities\":\"ROLE_USER,ROLE_ADMIN\"}";
+            UaaClientDetails details = new ObjectMapper().readValue(value, UaaClientDetails.class);
+            UaaClientDetails expected = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER,ROLE_ADMIN");
+            expected.setAdditionalInformation(Collections.singletonMap("foo", (Object) "bar"));
+            assertThat(details).isEqualTo(expected);
+        }
+
+        @Test
+        void equalityOfValidity() {
+            UaaClientDetails details = new UaaClientDetails();
+            details.setAccessTokenValiditySeconds(100);
+            UaaClientDetails other = new UaaClientDetails();
+            other.setAccessTokenValiditySeconds(100);
+            assertThat(other).isEqualTo(details);
+        }
+
+        @Test
+        void isScoped() {
+            UaaClientDetails details = new UaaClientDetails();
+            assertThat(details.isScoped()).isFalse();
+        }
+
+        @Test
+        void isSecretRequired() {
+            UaaClientDetails details = new UaaClientDetails();
+            assertThat(details.isSecretRequired()).isFalse();
+        }
+
+        @Test
+        void autoApprove() {
+            UaaClientDetails details = new UaaClientDetails();
+            assertThat(details.getAutoApproveScopes()).isNull();
+        }
+
+        @Test
+        void testHashCode() {
+            UaaClientDetails uaaClientDetails = new UaaClientDetails("admin", "uaa", "uaa.none",
+                    "client_credentials", "none", null);
+            uaaClientDetails.setRegisteredRedirectUri(Set.of("http://localhost:8080/uaa"));
+            uaaClientDetails.setRefreshTokenValiditySeconds(1);
+            uaaClientDetails.setAccessTokenValiditySeconds(1);
+            assertThat(uaaClientDetails.hashCode()).isPositive();
+        }
     }
 
-    @Test
-    void testBaseClientDetailsConvenienceConstructor() {
-      UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
-      Assert.assertEquals("[]", details.getResourceIds().toString());
-      Assert.assertEquals("[bar, foo]", new TreeSet<String>(details.getScope()).toString());
-      Assert.assertEquals("[authorization_code]", details.getAuthorizedGrantTypes().toString());
-      Assert.assertEquals("[ROLE_USER]", details.getAuthorities().toString());
-    }
+    @Nested
+    class Equals {
+        private UaaClientDetails testClient;
+        private UaaClientDetails testClientCompare;
 
-    @Test
-    void testBaseClientDetailsAutoApprove() {
-      UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
-      details.setAutoApproveScopes(StringUtils.commaDelimitedListToSet("read,write"));
-      assertTrue(details.isAutoApprove("read"));
-    }
+        @BeforeEach
+        void setUp() {
+            testClient = new UaaClientDetails("test", null, null, null, null);
+            testClientCompare = new UaaClientDetails(testClient);
+        }
 
-    @Test
-    void testBaseClientDetailsImplicitAutoApprove() {
-      UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
-      details.setAutoApproveScopes(StringUtils.commaDelimitedListToSet("true"));
-      assertTrue(details.isAutoApprove("read"));
-    }
+        @Test
+        void equals() {
+            UaaClientDetails uaaClientDetails = new UaaClientDetails("admin", null, null,
+                    null, null, null);
+            UaaClientDetails uaaClientDetails1 = new UaaClientDetails(uaaClientDetails);
+            assertThat(uaaClientDetails1).isEqualTo(uaaClientDetails);
+            assertThat(new Object()).isNotEqualTo(uaaClientDetails);
+            assertThat(uaaClientDetails).isNotNull();
+        }
 
-    @Test
-    void testBaseClientDetailsNoAutoApprove() {
-      UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
-      details.setAutoApproveScopes(StringUtils.commaDelimitedListToSet("none"));
-      assertFalse(details.isAutoApprove("read"));
-    }
+        @Test
+        void equalScope() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setScope(Set.of("new"));
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testBaseClientDetailsNullAutoApprove() {
-      UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
-      assertFalse(details.isAutoApprove("read"));
-    }
+        @Test
+        void equalAdditionalInformation() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setAdditionalInformation(Map.of("n", "v"));
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testJsonSerialize() throws Exception {
-      UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
-      details.setClientId("foo");
-      details.setClientSecret("bar");
-      String value = new ObjectMapper().writeValueAsString(details);
-      assertTrue(value.contains("client_id"));
-      assertTrue(value.contains("client_secret"));
-      assertTrue(value.contains("authorized_grant_types"));
-      assertTrue(value.contains("[\"ROLE_USER\"]"));
-    }
+        @Test
+        void equalResourceIds() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setResourceIds(Set.of("resource"));
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testJsonSerializeAdditionalInformation() throws Exception {
-      UaaClientDetails details = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
-      details.setClientId("foo");
-      details.setAdditionalInformation(Collections.singletonMap("foo", "bar"));
-      String value = new ObjectMapper().writeValueAsString(details);
-      assertTrue(value.contains("\"foo\":\"bar\""));
-    }
+        @Test
+        void equalRegisteredRedirectUris() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setRegisteredRedirectUri(Set.of("http://localhost:8080/uaa"));
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testJsonDeserialize() throws Exception {
-      String value = "{\"foo\":\"bar\",\"client_id\":\"foo\",\"scope\":[\"bar\",\"foo\"],\"authorized_grant_types\":[\"authorization_code\"],\"authorities\":[\"ROLE_USER\"]}";
-      UaaClientDetails details = new ObjectMapper().readValue(value, UaaClientDetails.class);
-      UaaClientDetails expected = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER");
-      expected.setAdditionalInformation(Collections.singletonMap("foo", (Object)"bar"));
-      Assert.assertEquals(expected, details);
-    }
+        @Test
+        void equalSecret() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setClientSecret("secret");
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testJsonDeserializeWithArraysAsStrings() throws Exception {
-      // Collection values can be deserialized from space or comma-separated lists
-      String value = "{\"foo\":\"bar\",\"client_id\":\"foo\",\"scope\":\"bar  foo\",\"authorized_grant_types\":\"authorization_code\",\"authorities\":\"ROLE_USER,ROLE_ADMIN\"}";
-      UaaClientDetails details = new ObjectMapper().readValue(value, UaaClientDetails.class);
-      UaaClientDetails expected = new UaaClientDetails("foo", "", "foo,bar", "authorization_code", "ROLE_USER,ROLE_ADMIN");
-      expected.setAdditionalInformation(Collections.singletonMap("foo", (Object)"bar"));
-      Assert.assertEquals(expected, details);
-    }
+        @Test
+        void equalClientId() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setClientId("user");
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testEqualityOfValidity() {
-      UaaClientDetails details = new UaaClientDetails();
-      details.setAccessTokenValiditySeconds(100);
-      UaaClientDetails other = new UaaClientDetails();
-      other.setAccessTokenValiditySeconds(100);
-      Assert.assertEquals(details, other);
-    }
+        @Test
+        void equalAuthorizedGrantTypes() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setAuthorizedGrantTypes(Set.of("client_credentials"));
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testIsScoped() {
-      UaaClientDetails details = new UaaClientDetails();
-      assertFalse(details.isScoped());
-    }
+        @Test
+        void equalAuthorities() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setAuthorities(AuthorityUtils.createAuthorityList("none"));
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testIsSecretRequired() {
-      UaaClientDetails details = new UaaClientDetails();
-      assertFalse(details.isSecretRequired());
-    }
+        @Test
+        void equalRefreshTokenValiditySeconds() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setRefreshTokenValiditySeconds(1);
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
 
-    @Test
-    void testAutoApprove() {
-      UaaClientDetails details = new UaaClientDetails();
-      assertNull(details.getAutoApproveScopes());
+        @Test
+        void equalAccessTokenValiditySeconds() {
+            assertThat(testClientCompare).isEqualTo(testClient);
+            testClientCompare.setAccessTokenValiditySeconds(1);
+            assertThat(testClientCompare).isNotEqualTo(testClient);
+        }
     }
-
-    @Test
-    void testHashCode() {
-      UaaClientDetails uaaClientDetails = new UaaClientDetails("admin", "uaa", "uaa.none",
-          "client_credentials", "none", null);
-      uaaClientDetails.setRegisteredRedirectUri(Set.of("http://localhost:8080/uaa"));
-      uaaClientDetails.setRefreshTokenValiditySeconds(1);
-      uaaClientDetails.setAccessTokenValiditySeconds(1);
-      assertTrue(uaaClientDetails.hashCode() > 0);
-    }
-  }
-
-  @Nested
-  class Equals {
-    private UaaClientDetails testClient;
-    private UaaClientDetails testClientCompare;
-
-    @BeforeEach
-    void setUp() {
-      testClient = new UaaClientDetails("test", null, null, null, null);
-      testClientCompare = new UaaClientDetails(testClient);
-    }
-
-    @Test
-    void testEquals() {
-      UaaClientDetails uaaClientDetails = new UaaClientDetails("admin", null, null,
-          null, null, null);
-      UaaClientDetails uaaClientDetails1 = new UaaClientDetails(uaaClientDetails);
-      assertEquals(uaaClientDetails, uaaClientDetails1);
-      assertNotEquals(uaaClientDetails, new Object());
-      assertNotEquals(null, uaaClientDetails);
-    }
-    @Test
-    void testEqualScope() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setScope(Set.of("new"));
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualAdditionalInformation() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setAdditionalInformation(Map.of("n", "v"));
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualResourceIds() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setResourceIds(Set.of("resource"));
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualRegisteredRedirectUris() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setRegisteredRedirectUri(Set.of("http://localhost:8080/uaa"));
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualSecret() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setClientSecret("secret");
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualClientId() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setClientId("user");
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualAuthorizedGrantTypes() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setAuthorizedGrantTypes(Set.of("client_credentials"));
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualAuthorities() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setAuthorities(AuthorityUtils.createAuthorityList("none"));
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualRefreshTokenValiditySeconds() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setRefreshTokenValiditySeconds(1);
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-    @Test
-    void testEqualAccessTokenValiditySeconds() {
-      assertEquals(testClient, testClientCompare);
-      testClientCompare.setAccessTokenValiditySeconds(1);
-      assertNotEquals(testClient, testClientCompare);
-    }
-
-  }
 }

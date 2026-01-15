@@ -10,10 +10,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -55,7 +55,7 @@ class RateLimitingFilterTest {
 
         instance.doFilter(request, response, chain);
 
-        verify(limiterInstance).shouldLimit();
+        verify(limiterInstance, times(2)).shouldLimit();
         verify(response, times(0)).sendError(eq(429), anyString());
     }
 
@@ -73,7 +73,7 @@ class RateLimitingFilterTest {
 
         instance.doFilter(request, response, chain);
 
-        verify(limiterInstance).shouldLimit();
+        verify(limiterInstance, times(2)).shouldLimit();
         verify(request).setAttribute(eq(RATE_LIMIT_ERROR_ATTRIBUTE), contains("LIMITED"));
         verify(response).sendError(eq(429), contains("LIMITED"));
     }

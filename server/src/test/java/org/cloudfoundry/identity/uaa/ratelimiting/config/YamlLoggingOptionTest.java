@@ -2,16 +2,16 @@ package org.cloudfoundry.identity.uaa.ratelimiting.config;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class YamlLoggingOptionTest {
 
     @Test
     void from() {
-        assertNull( YamlLoggingOption.from( null ) );
-        assertNull( YamlLoggingOption.from( "  " ) ); // a little testing to imply usage of StringUtils.normalizeToNull
-        YamlLoggingOption option = YamlLoggingOption.from( " Fred " );
-        assertNotNull( option );
-        assertEquals( "Fred", option.getValue() );
+        assertThat(YamlLoggingOption.from(null)).isNull();
+        assertThat(YamlLoggingOption.from("  ")).isNull(); // a little testing to imply usage of StringUtils.normalizeToNull
+        YamlLoggingOption option = YamlLoggingOption.from(" Fred ");
+        assertThat(option).isNotNull();
+        assertThat(option.getValue()).isEqualTo("Fred");
     }
 }

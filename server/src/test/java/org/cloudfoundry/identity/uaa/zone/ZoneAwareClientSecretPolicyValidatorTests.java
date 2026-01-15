@@ -5,7 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
 
 @ExtendWith(PollutionPreventionExtension.class)
 class ZoneAwareClientSecretPolicyValidatorTests {
@@ -14,8 +14,8 @@ class ZoneAwareClientSecretPolicyValidatorTests {
 
     private IdentityZone zone;
 
-    private ClientSecretPolicy defaultPolicy = new ClientSecretPolicy(0,255,0,0,0,0,6);
-    private ClientSecretPolicy strictPolicy = new ClientSecretPolicy(6,10,1,1,1,1,6);
+    private ClientSecretPolicy defaultPolicy = new ClientSecretPolicy(0, 255, 0, 0, 0, 0, 6);
+    private ClientSecretPolicy strictPolicy = new ClientSecretPolicy(6, 10, 1, 1, 1, 1, 6);
 
     private static final String TEST_SECRET_1 = "";
     private static final String TEST_SECRET_2 = "testsecret";
@@ -37,51 +37,51 @@ class ZoneAwareClientSecretPolicyValidatorTests {
     }
 
     @Test
-    void testEmptyClientSecret() {
+    void emptyClientSecret() {
         zone.getConfig().setClientSecretPolicy(defaultPolicy);
         validator.validate(TEST_SECRET_1);
     }
 
     @Test
-    void test_defaultPolicyTooLongSecret() {
+    void default_policy_too_long_secret() {
         zone.getConfig().setClientSecretPolicy(defaultPolicy);
-        assertThrows(InvalidClientSecretException.class, () -> validator.validate(TEST_SECRET_3));
+        assertThatExceptionOfType(InvalidClientSecretException.class).isThrownBy(() -> validator.validate(TEST_SECRET_3));
     }
 
     @Test
-    void testDefaultPolicy() {
+    void defaultPolicy() {
         zone.getConfig().setClientSecretPolicy(defaultPolicy);
         validator.validate(TEST_SECRET_4);
         validator.validate(TEST_SECRET_2);
     }
 
     @Test
-    void testSecretConformingToPolicy() {
+    void secretConformingToPolicy() {
         zone.getConfig().setClientSecretPolicy(strictPolicy);
         validator.validate(TEST_SECRET_4);
     }
 
     @Test
-    void testSecretMissingSpecialCharacter() {
+    void secretMissingSpecialCharacter() {
         zone.getConfig().setClientSecretPolicy(strictPolicy);
-        assertThrows(InvalidClientSecretException.class, () -> validator.validate(TEST_SECRET_5));
+        assertThatExceptionOfType(InvalidClientSecretException.class).isThrownBy(() -> validator.validate(TEST_SECRET_5));
     }
 
     @Test
-    void testSecretMissingDigit() {
+    void secretMissingDigit() {
         zone.getConfig().setClientSecretPolicy(strictPolicy);
-        assertThrows(InvalidClientSecretException.class, () -> validator.validate(TEST_SECRET_6));
+        assertThatExceptionOfType(InvalidClientSecretException.class).isThrownBy(() -> validator.validate(TEST_SECRET_6));
     }
 
     @Test
-    void testSecretMissingUpperCaseCharacter() {
+    void secretMissingUpperCaseCharacter() {
         zone.getConfig().setClientSecretPolicy(strictPolicy);
-        assertThrows(InvalidClientSecretException.class, () -> validator.validate(TEST_SECRET_7));
+        assertThatExceptionOfType(InvalidClientSecretException.class).isThrownBy(() -> validator.validate(TEST_SECRET_7));
     }
 
     @Test
-    void testSecretMissingLowerCaseCharacter() {
+    void secretMissingLowerCaseCharacter() {
         zone.getConfig().setClientSecretPolicy(strictPolicy);
-        assertThrows(InvalidClientSecretException.class, () -> validator.validate(TEST_SECRET_8));
+        assertThatExceptionOfType(InvalidClientSecretException.class).isThrownBy(() -> validator.validate(TEST_SECRET_8));
     }
 }

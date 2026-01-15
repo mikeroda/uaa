@@ -3,7 +3,6 @@ package org.cloudfoundry.identity.uaa.login;
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.account.UserAccountStatus;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
-import org.cloudfoundry.identity.uaa.login.util.RandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
 import org.cloudfoundry.identity.uaa.provider.IdentityProviderProvisioning;
@@ -12,13 +11,13 @@ import org.cloudfoundry.identity.uaa.provider.PasswordPolicy;
 import org.cloudfoundry.identity.uaa.provider.UaaIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.scim.ScimUser;
 import org.cloudfoundry.identity.uaa.security.web.CookieBasedCsrfTokenRepository;
+import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -31,14 +30,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.context.WebApplicationContext;
 
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpSession;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpSession;
 import java.util.Date;
 import java.util.stream.Stream;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.CookieCsrfPostProcessor.cookieCsrf;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -62,7 +60,7 @@ class ForcePasswordChangeControllerMockMvcTest {
 
     @BeforeEach
     void setup() throws Exception {
-        String username = new RandomValueStringGenerator().generate() + "@test.org";
+        String username = new AlphanumericRandomValueStringGenerator().generate() + "@test.org";
         user = new ScimUser(null, username, "givenname", "familyname");
         user.setPrimaryEmail(username);
         user.setPassword("secret");
@@ -86,11 +84,11 @@ class ForcePasswordChangeControllerMockMvcTest {
             userAccountStatus.setPasswordChangeRequired(true);
             String jsonStatus = JsonUtils.writeValueAsString(userAccountStatus);
             mockMvc.perform(
-                    patch("/Users/" + user.getId() + "/status")
-                            .header("Authorization", "Bearer " + token)
-                            .accept(APPLICATION_JSON)
-                            .contentType(APPLICATION_JSON)
-                            .content(jsonStatus))
+                            patch("/Users/" + user.getId() + "/status")
+                                    .header("Authorization", "Bearer " + token)
+                                    .accept(APPLICATION_JSON)
+                                    .contentType(APPLICATION_JSON)
+                                    .content(jsonStatus))
                     .andExpect(status().isOk());
         }
 
@@ -108,16 +106,16 @@ class ForcePasswordChangeControllerMockMvcTest {
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("/"));
 
-            assertTrue(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated());
-            assertTrue(SessionUtils.isPasswordChangeRequired(session));
+            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
+            assertThat(SessionUtils.isPasswordChangeRequired(session)).isTrue();
 
             mockMvc.perform(get("/")
-                    .session(session))
+                            .session(session))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("/force_password_change"));
 
-            assertTrue(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated());
-            assertTrue(SessionUtils.isPasswordChangeRequired(session));
+            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
+            assertThat(SessionUtils.isPasswordChangeRequired(session)).isTrue();
 
             MockHttpServletRequestBuilder validPost = post("/force_password_change")
                     .param("password", "test")
@@ -126,16 +124,16 @@ class ForcePasswordChangeControllerMockMvcTest {
                     .with(cookieCsrf());
             mockMvc.perform(validPost)
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl(("/force_password_change_completed")));
-            assertTrue(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated());
-            assertFalse(SessionUtils.isPasswordChangeRequired(session));
+                    .andExpect(redirectedUrl("/force_password_change_completed"));
+            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
+            assertThat(SessionUtils.isPasswordChangeRequired(session)).isFalse();
 
             mockMvc.perform(get("/force_password_change_completed")
-                    .session(session))
+                            .session(session))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("http://localhost/"));
-            assertTrue(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated());
-            assertFalse(SessionUtils.isPasswordChangeRequired(session));
+            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
+            assertThat(SessionUtils.isPasswordChangeRequired(session)).isFalse();
         }
 
     }
@@ -149,7 +147,7 @@ class ForcePasswordChangeControllerMockMvcTest {
         @BeforeEach
         void setup() {
             identityProvider = identityProviderProvisioning.retrieveByOrigin(OriginKeys.UAA, IdentityZone.getUaaZoneId());
-            cleanIdpDefinition = ((UaaIdentityProviderDefinition) identityProvider.getConfig());
+            cleanIdpDefinition = (UaaIdentityProviderDefinition) identityProvider.getConfig();
         }
 
         @AfterEach
@@ -165,11 +163,11 @@ class ForcePasswordChangeControllerMockMvcTest {
             userAccountStatus.setPasswordChangeRequired(true);
             String jsonStatus = JsonUtils.writeValueAsString(userAccountStatus);
             mockMvc.perform(
-                    patch("/Users/" + user.getId() + "/status")
-                            .header("Authorization", "Bearer " + token)
-                            .accept(APPLICATION_JSON)
-                            .contentType(APPLICATION_JSON)
-                            .content(jsonStatus))
+                            patch("/Users/" + user.getId() + "/status")
+                                    .header("Authorization", "Bearer " + token)
+                                    .accept(APPLICATION_JSON)
+                                    .contentType(APPLICATION_JSON)
+                                    .content(jsonStatus))
                     .andExpect(status().isOk());
             MockHttpSession session = new MockHttpSession();
             Cookie cookie = new Cookie(CookieBasedCsrfTokenRepository.DEFAULT_CSRF_COOKIE_NAME, "csrf1");
@@ -219,9 +217,9 @@ class ForcePasswordChangeControllerMockMvcTest {
                     .andExpect(redirectedUrl("/"));
 
             mockMvc.perform(
-                    get("/")
-                            .session(session)
-            )
+                            get("/")
+                                    .session(session)
+                    )
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("/force_password_change"));
 
@@ -233,14 +231,14 @@ class ForcePasswordChangeControllerMockMvcTest {
 
             mockMvc.perform(validPost)
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl(("/force_password_change_completed")));
+                    .andExpect(redirectedUrl("/force_password_change_completed"));
 
             mockMvc.perform(get("/force_password_change_completed")
-                    .session(session))
+                            .session(session))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("http://localhost/"));
-            assertTrue(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated());
-            assertFalse(SessionUtils.isPasswordChangeRequired(session));
+            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
+            assertThat(SessionUtils.isPasswordChangeRequired(session)).isFalse();
         }
     }
 
@@ -250,11 +248,11 @@ class ForcePasswordChangeControllerMockMvcTest {
         userAccountStatus.setPasswordChangeRequired(true);
         String jsonStatus = JsonUtils.writeValueAsString(userAccountStatus);
         mockMvc.perform(
-                patch("/Users/" + user.getId() + "/status")
-                        .header("Authorization", "Bearer " + token)
-                        .accept(APPLICATION_JSON)
-                        .contentType(APPLICATION_JSON)
-                        .content(jsonStatus))
+                        patch("/Users/" + user.getId() + "/status")
+                                .header("Authorization", "Bearer " + token)
+                                .accept(APPLICATION_JSON)
+                                .contentType(APPLICATION_JSON)
+                                .content(jsonStatus))
                 .andExpect(status().isOk());
 
         MockHttpServletRequestBuilder validPost = post("/force_password_change")
@@ -263,9 +261,8 @@ class ForcePasswordChangeControllerMockMvcTest {
         validPost.with(cookieCsrf());
         mockMvc.perform(validPost)
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl(("http://localhost/login")));
+                .andExpect(redirectedUrl("http://localhost/login"));
     }
-
 
     static class PasswordPolicyWithInvalidPassword {
         PasswordPolicy passwordPolicy;

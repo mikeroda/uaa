@@ -1,11 +1,6 @@
 package org.cloudfoundry.identity.uaa.health;
 
-import javax.servlet.http.HttpServletResponse;
-import javax.sql.DataSource;
-
-import java.sql.Connection;
-import java.sql.Statement;
-
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,6 +8,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.Statement;
 
 /**
  * Simple controller that just returns "ok" in a request body for the purposes
@@ -22,7 +21,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 @Controller
 public class HealthzEndpoint {
     private static Logger logger = LoggerFactory.getLogger(HealthzEndpoint.class);
-    private volatile boolean stopping = false;
+    private volatile boolean stopping;
     private volatile Boolean wasLastConnectionSuccessful = null;
     private DataSource dataSource;
 
@@ -35,7 +34,7 @@ public class HealthzEndpoint {
             logger.warn("Shutdown hook received, future requests to this endpoint will return 503");
             try {
                 if (sleepTime > 0) {
-                    logger.debug("Healthz is sleeping shutdown thread for " + sleepTime + " ms.");
+                    logger.debug("Healthz is sleeping shutdown thread for {} ms.", sleepTime);
                     Thread.sleep(sleepTime);
                 }
             } catch (InterruptedException e) {
@@ -46,7 +45,7 @@ public class HealthzEndpoint {
         this.dataSource = dataSource;
     }
 
-    @GetMapping("/healthz")
+    @GetMapping({"/healthz", "/healthz/**"})
     @ResponseBody
     public String getHealthz(HttpServletResponse response) {
         if (stopping) {
@@ -55,7 +54,10 @@ public class HealthzEndpoint {
             return "stopping\n";
         } else {
             if (wasLastConnectionSuccessful == null) {
-                return "UAA running. Database status unknown.\n";
+                isDataSourceConnectionAvailable();
+                if (wasLastConnectionSuccessful == false) {
+                    return "UAA running. Database failed to start.\n";
+                }
             }
 
             if (wasLastConnectionSuccessful) {
@@ -74,7 +76,7 @@ public class HealthzEndpoint {
             wasLastConnectionSuccessful = true;
             return;
         } catch (Exception ex) {
-            logger.error("Could not establish connection to DB - " + ex.getMessage());
+            logger.error("Could not establish connection to DB - {}", ex.getMessage());
         }
         wasLastConnectionSuccessful = false;
     }

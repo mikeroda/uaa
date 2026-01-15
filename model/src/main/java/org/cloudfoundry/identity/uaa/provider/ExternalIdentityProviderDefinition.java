@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ * *****************************************************************************
  * Cloud Foundry
  * Copyright (c) [2009-2015] Pivotal Software, Inc. All Rights Reserved.
  * <p>
@@ -36,9 +37,24 @@ public class ExternalIdentityProviderDefinition extends AbstractIdentityProvider
     public static final String EXTERNAL_GROUPS_WHITELIST = "externalGroupsWhitelist";
     public static final String ATTRIBUTE_MAPPINGS = "attributeMappings";
 
+    /**
+     * An allowlist for external groups to be considered for group mapping. If not set or set to an empty list, all
+     * external groups are considered. The allowlist is applied *before* the group mapping is executed.
+     */
     private List<String> externalGroupsWhitelist = new LinkedList<>();
+
+    /**
+     * Mappings from claims/attributes in the IdP token/assertion (values in the map - list or string) to attributes
+     * known to UAA (keys in the map). The keys in the map might have a prefix to group them
+     * (e.g., {@link ExternalIdentityProviderDefinition#USER_ATTRIBUTE_PREFIX}).
+     */
     private Map<String, Object> attributeMappings = new HashMap<>();
+
     private boolean addShadowUserOnLogin = true;
+
+    /**
+     * Whether to store the external groups and user attributes in the user info after login via this IdP.
+     */
     private boolean storeCustomAttributes = true;
 
     public List<String> getExternalGroupsWhitelist() {
@@ -46,7 +62,7 @@ public class ExternalIdentityProviderDefinition extends AbstractIdentityProvider
     }
 
     public void setExternalGroupsWhitelist(List<String> externalGroupsWhitelist) {
-        this.externalGroupsWhitelist = new LinkedList<>(externalGroupsWhitelist!=null ? externalGroupsWhitelist : emptyList());
+        this.externalGroupsWhitelist = new LinkedList<>(externalGroupsWhitelist != null ? externalGroupsWhitelist : emptyList());
     }
 
     @JsonIgnore
@@ -55,7 +71,7 @@ public class ExternalIdentityProviderDefinition extends AbstractIdentityProvider
     }
 
     public void setAttributeMappings(Map<String, Object> attributeMappings) {
-        this.attributeMappings = new HashMap<>(attributeMappings!=null?attributeMappings: emptyMap());
+        this.attributeMappings = new HashMap<>(attributeMappings != null ? attributeMappings : emptyMap());
     }
 
     public Map<String, Object> getAttributeMappings() {
@@ -83,16 +99,27 @@ public class ExternalIdentityProviderDefinition extends AbstractIdentityProvider
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        if (!super.equals(o)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
 
         ExternalIdentityProviderDefinition that = (ExternalIdentityProviderDefinition) o;
 
-        if (addShadowUserOnLogin != that.addShadowUserOnLogin) return false;
-        if(this.isStoreCustomAttributes() != that.isStoreCustomAttributes()) return false;
-        if (getExternalGroupsWhitelist() != null ? !getExternalGroupsWhitelist().equals(that.getExternalGroupsWhitelist()) : that.getExternalGroupsWhitelist() != null)
+        if (addShadowUserOnLogin != that.addShadowUserOnLogin) {
             return false;
+        }
+        if (this.isStoreCustomAttributes() != that.isStoreCustomAttributes()) {
+            return false;
+        }
+        if (getExternalGroupsWhitelist() != null ? !getExternalGroupsWhitelist().equals(that.getExternalGroupsWhitelist()) : that.getExternalGroupsWhitelist() != null) {
+            return false;
+        }
         return Objects.equals(attributeMappings, that.attributeMappings);
     }
 

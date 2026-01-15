@@ -97,7 +97,7 @@ public class JdbcIdentityZoneProvisioning implements IdentityZoneProvisioning, S
                 ps.setString(5, identityZone.getName());
                 ps.setString(6, identityZone.getSubdomain().toLowerCase());
                 ps.setString(7, identityZone.getDescription());
-                ps.setString(8,identityZone.getConfig() != null ? JsonUtils.writeValueAsString(identityZone.getConfig()) : null);
+                ps.setString(8, identityZone.getConfig() != null ? JsonUtils.writeValueAsString(identityZone.getConfig()) : null);
                 ps.setBoolean(9, identityZone.isActive());
             });
         } catch (DuplicateKeyException e) {
@@ -156,7 +156,7 @@ public class JdbcIdentityZoneProvisioning implements IdentityZoneProvisioning, S
                 try {
                     identityZone.setConfig(JsonUtils.readValue(config, IdentityZoneConfiguration.class));
                 } catch (JsonUtils.JsonUtilException e) {
-                    logger.error("Invalid zone configuration found for zone id:" + identityZone.getId(), e);
+                    logger.error("Invalid zone configuration found for zone id:{}", identityZone.getId(), e);
                     identityZone.setConfig(new IdentityZoneConfiguration());
                 }
             }

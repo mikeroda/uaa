@@ -1,8 +1,8 @@
 package org.cloudfoundry.identity.uaa.ratelimiting.internal.common;
 
 import java.time.Instant;
-import javax.annotation.Nonnull;
 
+import jakarta.annotation.Nonnull;
 import org.cloudfoundry.identity.uaa.ratelimiting.core.CompoundKey;
 
 public interface InternalLimiterFactory {
@@ -14,5 +14,5 @@ public interface InternalLimiterFactory {
      * @return internal limiter (not Null)
      */
     @Nonnull
-    InternalLimiter newLimiter( CompoundKey compoundKey, @Nonnull Instant now );
+    InternalLimiter newLimiter(CompoundKey compoundKey, @Nonnull Instant now);
 }

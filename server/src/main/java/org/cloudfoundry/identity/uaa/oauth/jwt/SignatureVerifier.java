@@ -22,7 +22,7 @@ public class SignatureVerifier implements Verifier {
     public SignatureVerifier(String keyId, String alg, JWK verificationKey) {
         if (keyId == null || alg == null) {
             this.jwk = new JWKSet(verificationKey);
-            this.delegate = JsonWebKeyHelper.parseConfiguration(verificationKey.toJSONString()).getKeys().get(0);
+            this.delegate = JsonWebKeyHelper.parseConfiguration(verificationKey.toJSONString()).getKeys().getFirst();
             this.algorithm = this.delegate.getAlgorithm();
         } else {
             this.algorithm = alg;
@@ -31,16 +31,16 @@ public class SignatureVerifier implements Verifier {
     }
 
     public SignatureVerifier(JsonWebKey verificationKey) {
-        if(verificationKey == null) {
+        if (verificationKey == null) {
             throw new IllegalArgumentException("verificationKey cannot be null");
         }
         try {
             JWK webKey;
             if (verificationKey.getKty() == JsonWebKey.KeyType.RSA) {
                 algorithm = Optional.ofNullable(verificationKey.getAlgorithm()).orElse(JWSAlgorithm.RS256.getName());
-                webKey = verificationKey.getValue() != null ?
-                    JsonWebKeyHelper.getJsonWebKey(verificationKey.getValue()) :
-                    JWK.parse(verificationKey.getKeyProperties());
+                webKey = verificationKey.hasValue() ?
+                        JsonWebKeyHelper.getJsonWebKey(verificationKey.getValue()) :
+                        JWK.parse(verificationKey.getKeyProperties());
             } else if (verificationKey.getKty() == JsonWebKey.KeyType.EC) {
                 algorithm = Optional.ofNullable(verificationKey.getAlgorithm()).orElse(JWSAlgorithm.ES256.getName());
                 webKey = JWK.parse(verificationKey.getKeyProperties());
@@ -55,7 +55,7 @@ public class SignatureVerifier implements Verifier {
             }
             String keyId = verificationKey.getKid();
             if (keyId == null || algorithm == null) {
-                delegate = JsonWebKeyHelper.parseConfiguration(webKey.toJSONString()).getKeys().get(0);
+                delegate = JsonWebKeyHelper.parseConfiguration(webKey.toJSONString()).getKeys().getFirst();
                 jwk = new JWKSet(webKey);
             } else {
                 delegate = createJwkDelegate(verificationKey.getKid(), algorithm, webKey);
@@ -71,7 +71,7 @@ public class SignatureVerifier implements Verifier {
         keyMap.put(HeaderParameterNames.ALGORITHM, alg);
         try {
             this.jwk = new JWKSet(JWK.parse(keyMap));
-            return JsonWebKeyHelper.parseConfiguration(jwk.getKeyByKeyId(keyId).toJSONString()).getKeys().get(0);
+            return JsonWebKeyHelper.parseConfiguration(jwk.getKeyByKeyId(keyId).toJSONString()).getKeys().getFirst();
         } catch (ParseException e) {
             throw new IllegalArgumentException(e);
         }

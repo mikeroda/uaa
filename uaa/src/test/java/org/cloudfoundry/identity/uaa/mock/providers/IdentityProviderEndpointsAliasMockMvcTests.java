@@ -1,30 +1,8 @@
 package org.cloudfoundry.identity.uaa.mock.providers;
 
-import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toSet;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.cloudfoundry.identity.uaa.constants.OriginKeys.OIDC10;
-import static org.cloudfoundry.identity.uaa.constants.OriginKeys.UAA;
-import static org.springframework.http.MediaType.APPLICATION_JSON;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.util.StringUtils.hasText;
-
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.Stream;
-
+import com.fasterxml.jackson.core.type.TypeReference;
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
+import org.cloudfoundry.identity.uaa.constants.ClientAuthentication;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.oauth.token.Claims;
 import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
@@ -60,7 +38,28 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.context.WebApplicationContext;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Stream;
+
+import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toSet;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.cloudfoundry.identity.uaa.constants.OriginKeys.OIDC10;
+import static org.cloudfoundry.identity.uaa.constants.OriginKeys.UAA;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.util.StringUtils.hasText;
 
 /**
  * Tests regarding the handling of "aliasId" and "aliasZid" properties of identity providers.
@@ -139,7 +138,7 @@ class IdentityProviderEndpointsAliasMockMvcTests {
                 final Optional<IdentityProvider<?>> createdIdp = allIdps.stream()
                         .filter(it -> it.getOriginKey().equals(existingIdp.getOriginKey()))
                         .findFirst();
-                assertThat(createdIdp).isPresent().contains(existingIdp);
+                assertThat(createdIdp).contains(existingIdp);
                 assertThat(createdIdp.get().getAliasZid()).isEqualTo(zone2.getId());
             }
         }
@@ -547,8 +546,8 @@ class IdentityProviderEndpointsAliasMockMvcTests {
                     final IdentityProvider<?> updatedOriginalIdp = updateIdp(zone1, originalIdp);
                     assertThat(updatedOriginalIdp).isNotNull();
                     assertThat(updatedOriginalIdp.getAliasId()).isNotBlank();
-                    assertThat(updatedOriginalIdp.getAliasZid()).isNotBlank();
-                    assertThat(updatedOriginalIdp.getAliasZid()).isEqualTo(zone2.getId());
+                    assertThat(updatedOriginalIdp.getAliasZid()).isNotBlank()
+                            .isEqualTo(zone2.getId());
                     assertThat(updatedOriginalIdp.getName()).isNotBlank().isEqualTo(newName);
 
                     // check if the change is propagated to the alias IdP
@@ -985,8 +984,8 @@ class IdentityProviderEndpointsAliasMockMvcTests {
                     IdentityProvider.class
             );
             assertThat(originalIdpAfterUpdate).isNotNull();
-            assertThat(originalIdpAfterUpdate.getIdentityZoneId()).isNotBlank();
-            assertThat(originalIdpAfterUpdate.getIdentityZoneId()).isEqualTo(zone.getId());
+            assertThat(originalIdpAfterUpdate.getIdentityZoneId()).isNotBlank()
+                    .isEqualTo(zone.getId());
             return originalIdpAfterUpdate;
         }
 
@@ -1034,7 +1033,7 @@ class IdentityProviderEndpointsAliasMockMvcTests {
                     zone.getId(),
                     idp.getId()
             );
-            assertThat(idpAfterFailedUpdateOpt).isPresent().contains(idpBeforeUpdate);
+            assertThat(idpAfterFailedUpdateOpt).contains(idpBeforeUpdate);
 
             // if an alias IdP was present before update, check if it also remains unchanged
             if (aliasIdpBeforeUpdate != null) {
@@ -1042,7 +1041,7 @@ class IdentityProviderEndpointsAliasMockMvcTests {
                         idpBeforeUpdate.getAliasZid(),
                         idpBeforeUpdate.getAliasId()
                 );
-                assertThat(aliasIdpAfterFailedUpdateOpt).isPresent().contains(aliasIdpBeforeUpdate);
+                assertThat(aliasIdpAfterFailedUpdateOpt).contains(aliasIdpBeforeUpdate);
             }
         }
     }
@@ -1277,7 +1276,6 @@ class IdentityProviderEndpointsAliasMockMvcTests {
                 adminUser.getUserName(),
                 adminUser.getPassword(),
                 String.join(" ", scopesForZone),
-                IdentityZone.getUaaZoneId(),
                 TokenConstants.TokenFormat.JWT // use JWT for later checking if all scopes are present
         );
 
@@ -1300,19 +1298,19 @@ class IdentityProviderEndpointsAliasMockMvcTests {
         final int responseStatus = getResult.getResponse().getStatus();
         assertThat(responseStatus).isIn(404, 200);
 
-        switch (responseStatus) {
-            case 404:
-                return Optional.empty();
-            case 200:
+        return switch (responseStatus) {
+            case 404 -> Optional.empty();
+            case 200 -> {
                 final IdentityProvider<?> responseBody = JsonUtils.readValue(
                         getResult.getResponse().getContentAsString(),
                         IdentityProvider.class
                 );
-                return Optional.ofNullable(responseBody);
-            default:
+                yield Optional.ofNullable(responseBody);
+            }
+            default ->
                 // should not happen
-                return Optional.empty();
-        }
+                    Optional.empty();
+        };
     }
 
     private List<IdentityProvider<?>> readAllIdpsInZone(final IdentityZone zone) throws Exception {
@@ -1329,7 +1327,7 @@ class IdentityProviderEndpointsAliasMockMvcTests {
         final JdbcIdentityProviderProvisioning identityProviderProvisioning = webApplicationContext
                 .getBean(JdbcIdentityProviderProvisioning.class);
         final int rowsDeleted = identityProviderProvisioning.deleteByOrigin(originKey, zoneId);
-        assertThat(rowsDeleted).isEqualTo(1);
+        assertThat(rowsDeleted).isOne();
     }
 
     private void assertIdpAndAliasHaveSameRelyingPartySecretInDb(final IdentityProvider<?> originalIdp) {
@@ -1383,7 +1381,7 @@ class IdentityProviderEndpointsAliasMockMvcTests {
     }
 
     private static List<String> getScopesForZone(final String zoneId, final String... scopes) {
-        return Stream.of(scopes).map(scope -> String.format("zones.%s.%s", zoneId, scope)).collect(toList());
+        return Stream.of(scopes).map(scope -> "zones.%s.%s".formatted(zoneId, scope)).toList();
     }
 
     private static IdentityProvider<?> buildOidcIdpWithAliasProperties(
@@ -1434,17 +1432,18 @@ class IdentityProviderEndpointsAliasMockMvcTests {
         switch (type) {
             case OIDC10:
                 final OIDCIdentityProviderDefinition definition = new OIDCIdentityProviderDefinition();
+                definition.setAuthMethod(ClientAuthentication.CLIENT_SECRET_BASIC);
                 try {
                     return definition
-                            .setAuthUrl(new URL("https://www.example.com/oauth/authorize"))
+                            .setAuthUrl(URI.create("https://www.example.com/oauth/authorize").toURL())
                             .setLinkText("link text")
                             .setRelyingPartyId("relying-party-id")
                             .setRelyingPartySecret("relying-party-secret")
                             .setShowLinkText(true)
                             .setSkipSslValidation(true)
                             .setTokenKey("key")
-                            .setTokenKeyUrl(new URL("https://www.example.com/token_keys"))
-                            .setTokenUrl(new URL("https://wwww.example.com/oauth/token"));
+                            .setTokenKeyUrl(URI.create("https://www.example.com/token_keys").toURL())
+                            .setTokenUrl(URI.create("https://wwww.example.com/oauth/token").toURL());
                 } catch (final MalformedURLException e) {
                     throw new RuntimeException(e);
                 }

@@ -1,6 +1,7 @@
 package org.cloudfoundry.identity.uaa.client;
 
 import static java.util.Optional.ofNullable;
+import static org.cloudfoundry.identity.uaa.client.ClientJwtConfiguration.JWT_CREDS;
 import static org.cloudfoundry.identity.uaa.client.ClientJwtConfiguration.JWKS;
 import static org.cloudfoundry.identity.uaa.client.ClientJwtConfiguration.JWKS_URI;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_AUTHORIZATION_CODE;
@@ -20,6 +21,7 @@ import java.util.Set;
 import org.cloudfoundry.identity.uaa.audit.event.EntityDeletedEvent;
 import org.cloudfoundry.identity.uaa.authentication.SystemAuthentication;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
+import org.cloudfoundry.identity.uaa.oauth.client.ClientJwtCredential;
 import org.cloudfoundry.identity.uaa.provider.ClientAlreadyExistsException;
 import org.cloudfoundry.identity.uaa.provider.NoSuchClientException;
 import org.cloudfoundry.identity.uaa.user.UaaAuthority;
@@ -29,6 +31,8 @@ import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationEventPublisherAware;
@@ -38,15 +42,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.provider.ClientDetails;
+import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+@Component
 public class ClientAdminBootstrap implements
         InitializingBean,
         ApplicationListener<ContextRefreshedEvent>,
         ApplicationEventPublisherAware {
 
-    private static Logger logger = LoggerFactory.getLogger(ClientAdminBootstrap.class);
+    private static final Logger logger = LoggerFactory.getLogger(ClientAdminBootstrap.class);
 
     private final PasswordEncoder passwordEncoder;
     private final MultitenantClientServices clientRegistrationService;
@@ -76,13 +82,13 @@ public class ClientAdminBootstrap implements
      *                           without client_secret parameter but with PKCE S256 method
      */
     ClientAdminBootstrap(
-            final PasswordEncoder passwordEncoder,
+            @Qualifier("nonCachingPasswordEncoder") final PasswordEncoder passwordEncoder,
             final MultitenantClientServices clientRegistrationService,
             final ClientMetadataProvisioning clientMetadataProvisioning,
-            final boolean defaultOverride,
-            final Map<String, Map<String, Object>> clients,
-            final Collection<String> autoApproveClients,
-            final Collection<String> clientsToDelete,
+            @Value("${oauth.client.override:true}")final boolean defaultOverride,
+            @Value("#{@config['oauth']==null ? null : @config['oauth']['clients']}") final Map<String, Map<String, Object>> clients,
+            @Value("#{@applicationProperties.containsKey('oauth.client.autoapprove') ? @config['oauth']['client']['autoapprove'] : 'cf'}") final Collection<String> autoApproveClients,
+            @Value("#{@config['delete']==null ? null : @config['delete']['clients']}") final Collection<String> clientsToDelete,
             final JdbcTemplate jdbcTemplate,
             final Set<String> allowPublicClients) {
         this.passwordEncoder = passwordEncoder;
@@ -113,10 +119,10 @@ public class ClientAdminBootstrap implements
             try {
                 UaaClientDetails base = (UaaClientDetails) clientRegistrationService.loadClientByClientId(clientId, IdentityZone.getUaaZoneId());
                 base.addAdditionalInformation(ClientConstants.AUTO_APPROVE, true);
-                logger.debug("Adding autoapprove flag to client: " + clientId);
+                logger.debug("Adding autoapprove flag to client: {}", clientId);
                 clientRegistrationService.updateClientDetails(base, IdentityZone.getUaaZoneId());
             } catch (NoSuchClientException n) {
-                logger.debug("Client not found, unable to set autoapprove: " + clientId);
+                logger.debug("Client not found, unable to set autoapprove: {}", clientId);
             }
         }
     }
@@ -168,7 +174,7 @@ public class ClientAdminBootstrap implements
             if (map.get("secret") instanceof List) {
                 List<String> secrets = (List<String>) map.get("secret");
                 if (!secrets.isEmpty()) {
-                    client.setClientSecret(secrets.get(0) == null ? "" : secrets.get(0));
+                    client.setClientSecret(secrets.getFirst() == null ? "" : secrets.getFirst());
                     if (secrets.size() > 1) {
                         secondSecret = secrets.get(1) == null ? "" : secrets.get(1);
                     }
@@ -202,22 +208,27 @@ public class ClientAdminBootstrap implements
                 client.getAuthorizedGrantTypes().add(GRANT_TYPE_REFRESH_TOKEN);
             }
             for (String key : Arrays.asList("resource-ids", "scope", "authorized-grant-types", "authorities",
-                    "redirect-uri", "secret", "id", "override", "access-token-validity",
-                    "refresh-token-validity", "show-on-homepage", "app-launch-url", "app-icon", JWKS, JWKS_URI)) {
+                    "redirect-uri", "secret", "id", "override", "access-token-validity", "refresh-token-validity",
+                    "show-on-homepage", "app-launch-url", "app-icon", JWKS, JWKS_URI, JWT_CREDS)) {
                 info.remove(key);
             }
 
             client.setAdditionalInformation(info);
 
+            ClientJwtConfiguration keyConfig = null;
             if (map.get(JWKS_URI) instanceof String || map.get(JWKS) instanceof String) {
                 String jwksUri = (String) map.get(JWKS_URI);
                 String jwks = (String) map.get(JWKS);
-                ClientJwtConfiguration keyConfig = ClientJwtConfiguration.parse(jwksUri, jwks);
-                if (keyConfig != null && keyConfig.getCleanString() != null) {
-                    keyConfig.writeValue(client);
-                } else {
-                    throw new InvalidClientDetailsException("Client jwt configuration invalid syntax. ClientID: " + client.getClientId());
+                keyConfig = ClientJwtConfiguration.parse(jwksUri, jwks);
+                writeJwtClientConfiguration(keyConfig, client);
+            }
+
+            if (map.get(JWT_CREDS) instanceof String jwtCredential) {
+                if (keyConfig == null) {
+                    keyConfig = new ClientJwtConfiguration();
                 }
+                keyConfig.addJwtCredentials(ClientJwtCredential.parse(jwtCredential));
+                writeJwtClientConfiguration(keyConfig, client);
             }
 
             try {
@@ -227,7 +238,7 @@ public class ClientAdminBootstrap implements
                 }
             } catch (ClientAlreadyExistsException e) {
                 if (override) {
-                    logger.debug("Overriding client details for " + clientId);
+                    logger.debug("Overriding client details for {}", clientId);
                     clientRegistrationService.updateClientDetails(client, IdentityZone.getUaaZoneId());
                     updatePasswordsIfChanged(clientId, client.getClientSecret(), secondSecret);
                 } else {
@@ -248,6 +259,14 @@ public class ClientAdminBootstrap implements
 
             ClientMetadata clientMetadata = buildClientMetadata(map, clientId);
             clientMetadataProvisioning.update(clientMetadata, IdentityZone.getUaaZoneId());
+        }
+    }
+
+    private static void writeJwtClientConfiguration(ClientJwtConfiguration keyConfig, UaaClientDetails client) {
+        if (keyConfig != null && keyConfig.hasConfiguration()) {
+            keyConfig.writeValue(client);
+        } else {
+            throw new InvalidClientDetailsException("Client jwt configuration invalid syntax. ClientID: " + client.getClientId());
         }
     }
 
@@ -283,17 +302,19 @@ public class ClientAdminBootstrap implements
             // check if both passwords are still up to date
             // 1st line: client already has 2 passwords: check if both are still correct
             // 2nd line: client has only 1 pasword: check if password is correct and second password is null
-            if ( (existingPasswordHash.length > 1 && rawPassword1 != null
-                && passwordEncoder.matches(rawPassword1, existingPasswordHash[0])
-                && rawPassword2 != null && passwordEncoder.matches(rawPassword2, existingPasswordHash[1]) )
-                || (rawPassword1 != null && (passwordEncoder.matches(rawPassword1, existingPasswordHash[0]) && rawPassword2 == null)) ) {
+            if ((existingPasswordHash.length > 1 && rawPassword1 != null
+                    && passwordEncoder.matches(rawPassword1, existingPasswordHash[0])
+                    && rawPassword2 != null && passwordEncoder.matches(rawPassword2, existingPasswordHash[1]))
+                    || (rawPassword1 != null && (passwordEncoder.matches(rawPassword1, existingPasswordHash[0]) && rawPassword2 == null))) {
                 // no changes to passwords: nothing to do here
                 return;
             }
         }
         // at least one password has changed: update
         clientRegistrationService.updateClientSecret(clientId, rawPassword1, IdentityZone.getUaaZoneId());
-        if (rawPassword2 != null) clientRegistrationService.addClientSecret(clientId, rawPassword2, IdentityZone.getUaaZoneId());
+        if (rawPassword2 != null) {
+            clientRegistrationService.addClientSecret(clientId, rawPassword2, IdentityZone.getUaaZoneId());
+        }
     }
 
     @Override
@@ -302,11 +323,11 @@ public class ClientAdminBootstrap implements
         for (String clientId : clientsToDelete) {
             try {
                 ClientDetails client = clientRegistrationService.loadClientByClientId(clientId, IdentityZone.getUaaZoneId());
-                logger.debug("Deleting client from manifest:" + clientId);
+                logger.debug("Deleting client from manifest:{}", clientId);
                 EntityDeletedEvent<ClientDetails> delete = new EntityDeletedEvent<>(client, auth, IdentityZoneHolder.getCurrentZoneId());
                 publish(delete);
             } catch (NoSuchClientException e) {
-                logger.debug("Ignoring delete for non existent client:" + clientId);
+                logger.debug("Ignoring delete for non existent client:{}", clientId);
             }
         }
     }

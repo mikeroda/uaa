@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ * *****************************************************************************
  *     Cloud Foundry
  *     Copyright (c) [2009-2016] Pivotal Software, Inc. All Rights Reserved.
  *
@@ -19,7 +20,6 @@ import org.cloudfoundry.identity.uaa.oauth.KeyInfoService;
 import org.cloudfoundry.identity.uaa.oauth.jwt.JwtClientAuthentication;
 import org.cloudfoundry.identity.uaa.provider.OIDCIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.junit.Assert;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -32,9 +32,12 @@ import org.springframework.web.util.HtmlUtils;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestClient {
 
@@ -54,16 +57,19 @@ public class TestClient {
     public String getOAuthAccessToken(String username, String password, String grantType, String scope) {
         return getOAuthAccessToken(baseUrl, username, password, grantType, scope);
     }
+
     public String getOAuthAccessToken(String baseUrl, String username, String password, String grantType, String scope) {
         HttpHeaders headers = new HttpHeaders();
         headers.add("Authorization", getBasicAuthHeaderValue(username, password));
 
-        MultiValueMap<String, String> postParameters = new LinkedMultiValueMap<String, String>();
+        MultiValueMap<String, String> postParameters = new LinkedMultiValueMap<>();
         postParameters.add("grant_type", grantType);
         postParameters.add("client_id", username);
-        if(scope != null) { postParameters.add("scope", scope); }
+        if (scope != null) {
+            postParameters.add("scope", scope);
+        }
 
-        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<MultiValueMap<String, String>>(postParameters, headers);
+        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(postParameters, headers);
 
         ResponseEntity<Map> exchange = restTemplate.exchange(baseUrl + "/oauth/token", HttpMethod.POST, requestEntity, Map.class);
 
@@ -72,9 +78,9 @@ public class TestClient {
 
     public void createClient(String adminAccessToken, UaaClientDetails clientDetails) {
         restfulCreate(
-            adminAccessToken,
-            JsonUtils.writeValueAsString(clientDetails),
-            baseUrl + "/oauth/clients"
+                adminAccessToken,
+                JsonUtils.writeValueAsString(clientDetails),
+                baseUrl + "/oauth/clients"
         );
     }
 
@@ -94,11 +100,15 @@ public class TestClient {
         );
     }
 
-    public String createClientJwt(String clientId, String jwks) {
+    public String createClientJwt(String clientId, String keyId, String jwks) {
         KeyInfoService keyInfoService = new KeyInfoService(baseUrl);
         JwtClientAuthentication jwtClientAuthentication = new JwtClientAuthentication(keyInfoService);
+        HashMap oidcKeyInfo = new HashMap();
+        oidcKeyInfo.put("kid", keyId);
+        oidcKeyInfo.put("key", jwks);
         OIDCIdentityProviderDefinition config = new OIDCIdentityProviderDefinition();
         config.setRelyingPartyId(clientId);
+        config.setJwtClientAuthentication(oidcKeyInfo);
         try {
             config.setTokenUrl(new URL(baseUrl + "/oauth/token"));
         } catch (MalformedURLException e) {
@@ -132,9 +142,9 @@ public class TestClient {
         headers.add("Accept", "application/json");
         headers.add("Content-Type", "application/json");
 
-        HttpEntity<String> requestEntity = new HttpEntity<String>(json, headers);
+        HttpEntity<String> requestEntity = new HttpEntity<>(json, headers);
         ResponseEntity<Void> exchange = restTemplate.exchange(url, HttpMethod.POST, requestEntity, Void.class);
-        Assert.assertEquals(HttpStatus.CREATED, exchange.getStatusCode());
+        assertThat(exchange.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
 
     public String extractLink(String messageBody) {

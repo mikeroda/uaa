@@ -10,7 +10,8 @@ import org.springframework.util.StringUtils;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
 
 class ScimSearchQueryConverterTests {
 
@@ -90,7 +91,7 @@ class ScimSearchQueryConverterTests {
     }
 
     @Test
-    void testFilterWithApostrophe() {
+    void filterWithApostrophe() {
         validate(filterProcessor.convert("username eq \"marissa'@test.org\"", null, false, zoneId),
                 "LOWER(username) = LOWER(:__value_0)", null, 1);
     }
@@ -116,8 +117,8 @@ class ScimSearchQueryConverterTests {
     }
 
     @Test
-    void testIllegalUnquotedValueInFilter() {
-        assertThrows(IllegalArgumentException.class, () -> filterProcessor.convert("username eq joe", null, false, zoneId));
+    void illegalUnquotedValueInFilter() {
+        assertThatExceptionOfType(IllegalArgumentException.class).isThrownBy(() -> filterProcessor.convert("username eq joe", null, false, zoneId));
     }
 
     @Test
@@ -135,8 +136,8 @@ class ScimSearchQueryConverterTests {
     }
 
     private void validate(ProcessedFilter filter, String expectedWhereClauseBeforeIdentityZoneCheck, String expectedOrderByClause, int expectedParamCount, Class... types) {
-        assertNotNull(filter);
-        assertFalse(filter.getParamPrefix().contains("-"), "Filter's param prefix cannot contain '-': " + filter.getParamPrefix());
+        assertThat(filter).isNotNull();
+        assertThat(filter.getParamPrefix()).as("Filter's param prefix cannot contain '-': " + filter.getParamPrefix()).doesNotContain("-");
 
         // There is always an implied "and also the identity zone must match the zone in which the
         // user performed the query" clause, which also causes an extra param on the filter, so
@@ -151,15 +152,14 @@ class ScimSearchQueryConverterTests {
         }
         expectedSql = expectedSql.replaceAll("__value_", filter.getParamPrefix());
 
-        assertEquals(expectedSql, filter.getSql());
-
-        assertEquals(expectedParamCount + 1, filter.getParams().size());
+        assertThat(filter.getSql()).isEqualTo(expectedSql);
+        assertThat(filter.getParams()).hasSize(expectedParamCount + 1);
 
         int count = 0;
         for (Class type : types) {
             String param = filter.getParamPrefix() + count++;
             Object value = filter.getParams().get(param);
-            assertEquals(type, value.getClass());
+            assertThat(value.getClass()).isEqualTo(type);
         }
     }
 }

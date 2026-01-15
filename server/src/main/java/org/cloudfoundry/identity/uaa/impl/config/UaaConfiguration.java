@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ * *****************************************************************************
  *     Cloud Foundry
  *     Copyright (c) [2009-2016] Pivotal Software, Inc. All Rights Reserved.
  *
@@ -17,6 +18,7 @@ import org.cloudfoundry.identity.uaa.impl.config.UaaConfiguration.Jwt.Token.Poli
 import org.cloudfoundry.identity.uaa.impl.config.UaaConfiguration.Jwt.Token.Policy.KeySpec;
 import org.cloudfoundry.identity.uaa.impl.config.UaaConfiguration.OAuth.Client;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
+import org.cloudfoundry.identity.uaa.ratelimiting.core.config.LimiterMapping;
 import org.hibernate.validator.constraints.URL;
 import org.yaml.snakeyaml.TypeDescription;
 import org.yaml.snakeyaml.Yaml;
@@ -24,13 +26,13 @@ import org.yaml.snakeyaml.constructor.AbstractConstruct;
 import org.yaml.snakeyaml.constructor.Construct;
 import org.yaml.snakeyaml.nodes.Node;
 
-import javax.validation.ConstraintViolation;
-import javax.validation.Valid;
-import javax.validation.Validation;
-import javax.validation.Validator;
-import javax.validation.ValidatorFactory;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Pattern;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Valid;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.InputStreamReader;
@@ -58,6 +60,7 @@ public class UaaConfiguration {
 
     @URL(message = "issuer.uri must be a valid URL")
     public String issuerUri;
+    public Map<String, Object> issuer;
     public boolean dump_requests;
     public boolean require_https;
     public boolean loginAddnew;
@@ -77,28 +80,28 @@ public class UaaConfiguration {
     @Valid
     public CloudController cloud_controller;
     @Valid
-    public Map<String,Object> ldap;
+    public Map<String, Object> ldap;
 
     @Valid
-    public Map<String,Object> login;
+    public Map<String, Object> login;
     @Valid
-    public Map<String,Object> logout;
+    public Map<String, Object> logout;
     @Valid
-    public Map<String,Object> links;
+    public Map<String, Object> links;
     @Valid
-    public Map<String,Object> smtp;
+    public Map<String, Object> smtp;
     @Valid
-    public Map<String,Object> tiles;
+    public Map<String, Object> tiles;
     @Valid
-    public Map<String,Object> servlet;
+    public Map<String, Object> servlet;
     @Valid
-    public Map<String,Object> password;
+    public Map<String, Object> password;
     @Valid
-    public Map<String,Object> authentication;
+    public Map<String, Object> authentication;
     @Valid
-    public Map<String,Object> notifications;
+    public Map<String, Object> notifications;
     @Valid
-    public Map<String,Object> uaa;
+    public Map<String, Object> uaa;
     @Valid
     public String assetBaseUrl;
     @Valid
@@ -106,7 +109,14 @@ public class UaaConfiguration {
     @Valid
     public OAuth multitenant;
     @Valid
-    public Map<String,Object> cors;
+    public Map<String, Object> cors;
+
+    public Encryption encryption;
+
+    public Integer userMaxCount;
+    public Integer groupMaxCount;
+    public Integer clientMaxCount;
+    public RateLimit ratelimit;
 
     public static class Zones {
         @Valid
@@ -158,20 +168,31 @@ public class UaaConfiguration {
             public String signingAlg;
             public Claims claims;
             public Policy policy;
+            public Boolean revocable;
+            public Refresh refresh;
+
             public static class Claims {
                 public Set<String> exclusions;
             }
 
             public static class Policy {
                 public String activeKeyId;
-                public Map<String,KeySpec> keys;
+                public Map<String, KeySpec> keys;
                 public Policy global;
                 public int accessTokenValiditySeconds;
                 public int refreshTokenValiditySeconds;
+
                 public static class KeySpec {
                     public String signingKey;
                     public String signingKeyPassword;
+                    public String signingAlg;
                 }
+            }
+
+            public static class Refresh {
+                public String format;
+                public Boolean rotate;
+                public Boolean unique;
             }
         }
     }
@@ -224,13 +245,21 @@ public class UaaConfiguration {
         public String refreshTokenValidity;
         @URL(message = "'redirect-uri' must be a valid URL")
         public String redirectUri;
+        public String jwks;
+        public String signup_redirect_url;
+        public String change_email_redirect_url;
+        public String name;
+        public List<String> allowedproviders;
+        public String useBcryptPrefix;
+        public String jwks_uri;
+        public String jwt_creds;
     }
 
     public static class Scim {
         public boolean userids_enabled;
         public boolean userOverride;
         public List<String> users;
-        public String username_pattern;
+        public List<String> external_groups;
         public Object groups;
     }
 
@@ -238,10 +267,29 @@ public class UaaConfiguration {
         public int requiredScore;
     }
 
+    public static class Encryption {
+        public String active_key_label;
+        public String passkey;
+        public List<EncryptionKey> encryption_keys;
+
+        public static class EncryptionKey {
+            public String label;
+        }
+    }
+
+    public static class RateLimit {
+        public String loggingOption;
+        public String credentialID;
+        public List<LimiterMapping> limiterMappings;
+    }
+
+
     public static class UaaConfigConstructor extends CustomPropertyConstructor {
 
         public UaaConfigConstructor() {
             super(UaaConfiguration.class);
+            var uaaDesc = typeDefinitions.get(UaaConfiguration.class);
+            uaaDesc.putMapPropertyType("issuer", String.class, Object.class);
 
             TypeDescription oauthDesc = createTypeDescription(OAuth.class);
             oauthDesc.putMapPropertyType("clients", String.class, OAuthClient.class);
@@ -278,6 +326,7 @@ public class UaaConfiguration {
             addPropertyAlias("access-token-validity", OAuthClient.class, "accessTokenValidity");
             addPropertyAlias("refresh-token-validity", OAuthClient.class, "refreshTokenValidity");
             addPropertyAlias("user.override", Scim.class, "userOverride");
+            addPropertyAlias("use-bcrypt-prefix", OAuthClient.class, "useBcryptPrefix");
         }
 
         @Override

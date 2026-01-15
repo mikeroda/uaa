@@ -2,8 +2,7 @@ package org.cloudfoundry.identity.uaa.ratelimiting.util;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class StringUtilitiesTest {
     private static final Object[] EMPTY = new Object[0];
@@ -19,30 +18,30 @@ class StringUtilitiesTest {
 
     @Test
     void toErrorMsg() {
-        assertNull( StringUtilities.toErrorMsg( null ) );
-        assertEquals( "Fred", StringUtilities.toErrorMsg( new IllegalStateException("Fred") ) );
-        assertEquals( MyException.class.getSimpleName(), StringUtilities.toErrorMsg( new MyException() ) );
+        assertThat(StringUtilities.toErrorMsg(null)).isNull();
+        assertThat(StringUtilities.toErrorMsg(new IllegalStateException("Fred"))).isEqualTo("Fred");
+        assertThat(StringUtilities.toErrorMsg(new MyException())).isEqualTo(MyException.class.getSimpleName());
     }
 
     @Test
     void options() {
         String expectedEMPTY = "";
-        String expectedJUST_NULLS = "null";
+        String expectedJUSTNULLS = "null";
         String expectedVALUES = "'Martin Fowler', 7, null, 2, or 5"; // Note in reverse order
 
-        assertEquals( expectedEMPTY, StringUtilities.options( EMPTY ), "EMPTY" );
-        assertEquals( expectedJUST_NULLS, StringUtilities.options( JUST_NULLS ), "JUST_NULLS" );
-        assertEquals( expectedVALUES, StringUtilities.options( VALUES ), "VALUES" );
+        assertThat(StringUtilities.options(EMPTY)).as("EMPTY").isEqualTo(expectedEMPTY);
+        assertThat(StringUtilities.options(JUST_NULLS)).as("JUST_NULLS").isEqualTo(expectedJUSTNULLS);
+        assertThat(StringUtilities.options(VALUES)).as("VALUES").isEqualTo(expectedVALUES);
 
         String oneLabel = "type";
-        assertEquals( "no " + oneLabel + "s" + expectedEMPTY, StringUtilities.options( oneLabel, EMPTY ), "EMPTY 1label" );
-        assertEquals( "the " + oneLabel + " is: " + expectedJUST_NULLS, StringUtilities.options( oneLabel, JUST_NULLS ), "JUST_NULLS 1label" );
-        assertEquals( "the " + oneLabel + "s are: " + expectedVALUES, StringUtilities.options( oneLabel, VALUES ), "VALUES 1label" );
+        assertThat(StringUtilities.options(oneLabel, EMPTY)).as("EMPTY 1label").isEqualTo("no " + oneLabel + "s" + expectedEMPTY);
+        assertThat(StringUtilities.options(oneLabel, JUST_NULLS)).as("JUST_NULLS 1label").isEqualTo("the " + oneLabel + " is: " + expectedJUSTNULLS);
+        assertThat(StringUtilities.options(oneLabel, VALUES)).as("VALUES 1label").isEqualTo("the " + oneLabel + "s are: " + expectedVALUES);
 
         String labelSingular = "child";
         String labelPlural = "children";
-        assertEquals( "no " + labelPlural + expectedEMPTY, StringUtilities.options( labelSingular, labelPlural, EMPTY ), "EMPTY 2labels" );
-        assertEquals( "the " + labelSingular + " is: " + expectedJUST_NULLS, StringUtilities.options( labelSingular, labelPlural, JUST_NULLS ), "JUST_NULLS 2labels" );
-        assertEquals( "the " + labelPlural + " are: " + expectedVALUES, StringUtilities.options( labelSingular, labelPlural, VALUES ), "VALUES 2labels" );
+        assertThat(StringUtilities.options(labelSingular, labelPlural, EMPTY)).as("EMPTY 2labels").isEqualTo("no " + labelPlural + expectedEMPTY);
+        assertThat(StringUtilities.options(labelSingular, labelPlural, JUST_NULLS)).as("JUST_NULLS 2labels").isEqualTo("the " + labelSingular + " is: " + expectedJUSTNULLS);
+        assertThat(StringUtilities.options(labelSingular, labelPlural, VALUES)).as("VALUES 2labels").isEqualTo("the " + labelPlural + " are: " + expectedVALUES);
     }
 }

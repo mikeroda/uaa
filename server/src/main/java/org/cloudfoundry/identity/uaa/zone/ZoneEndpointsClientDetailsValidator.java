@@ -7,7 +7,7 @@ import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
 import org.springframework.security.core.authority.AuthorityUtils;
-import org.springframework.security.oauth2.provider.ClientDetails;
+import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
@@ -19,12 +19,13 @@ import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYP
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_PASSWORD;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_REFRESH_TOKEN;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_SAML2_BEARER;
+import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_TOKEN_EXCHANGE;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_USER_TOKEN;
 
 @Component("zoneEndpointsClientDetailsValidator")
 public class ZoneEndpointsClientDetailsValidator implements ClientDetailsValidator {
 
-    private final String REQUIRED_SCOPE = "zones.write";
+    private static final String REQUIRED_SCOPE = "zones.write";
     private final ClientSecretValidator clientSecretValidator;
 
     public ZoneEndpointsClientDetailsValidator(
@@ -52,6 +53,7 @@ public class ZoneEndpointsClientDetailsValidator implements ClientDetailsValidat
                     clientDetails.getAuthorizedGrantTypes().contains(GRANT_TYPE_REFRESH_TOKEN) ||
                     clientDetails.getAuthorizedGrantTypes().contains(GRANT_TYPE_SAML2_BEARER) ||
                     clientDetails.getAuthorizedGrantTypes().contains(GRANT_TYPE_JWT_BEARER) ||
+                    clientDetails.getAuthorizedGrantTypes().contains(GRANT_TYPE_TOKEN_EXCHANGE) ||
                     clientDetails.getAuthorizedGrantTypes().contains(GRANT_TYPE_PASSWORD)) {
                 if (StringUtils.isBlank(clientDetails.getClientSecret())) {
                     throw new InvalidClientDetailsException("client_secret cannot be blank");

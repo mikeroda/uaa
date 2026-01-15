@@ -2,18 +2,15 @@ package org.cloudfoundry.identity.uaa.ratelimiting;
 
 import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.junit.Assert.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class RateLimitStatusControllerTest {
 
-  RateLimitStatusController rateLimitStatusController = new RateLimitStatusController();
+    RateLimitStatusController rateLimitStatusController = new RateLimitStatusController();
 
-  @Test
-  void rateLimitStatus() {
-    String responseEntity = rateLimitStatusController.rateLimitStatus();
-    assertNotNull(responseEntity);
-    assertThat(responseEntity, containsString("\"status\" : \"DISABLED\""));
-  }
+    @Test
+    void rateLimitStatus() {
+        String responseEntity = rateLimitStatusController.rateLimitStatus();
+        assertThat(responseEntity).contains("\"status\" : \"DISABLED\"");
+    }
 }

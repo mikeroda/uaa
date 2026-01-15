@@ -1,19 +1,19 @@
 package org.cloudfoundry.identity.uaa.alias;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
-import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
-import static org.cloudfoundry.identity.uaa.constants.OriginKeys.UAA;
-
-import java.util.Objects;
-import java.util.UUID;
-
 import org.cloudfoundry.identity.uaa.EntityWithAlias;
 import org.cloudfoundry.identity.uaa.scim.ScimUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatcher;
 import org.springframework.lang.Nullable;
+
+import java.util.Objects;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.cloudfoundry.identity.uaa.constants.OriginKeys.UAA;
 
 public abstract class EntityAliasHandlerEnsureConsistencyTest<T extends EntityWithAlias> {
     protected abstract EntityAliasHandler<T> buildAliasHandler(final boolean aliasEntitiesEnabled);

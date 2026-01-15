@@ -2,19 +2,23 @@ package org.cloudfoundry.identity.uaa.oauth.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.apache.directory.api.util.Base64;
 import org.cloudfoundry.identity.uaa.test.RandomParametersJunitExtension;
 import org.cloudfoundry.identity.uaa.test.RandomParametersJunitExtension.RandomValue;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.util.Arrays;
+import java.util.Base64;
+import java.util.List;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
 
 @Tag("https://tools.ietf.org/html/rfc7519#section-5")
 @DisplayName("JOSE Header")
@@ -49,11 +53,9 @@ class JwtHeaderHelperTest {
         void createFromStringThrowsExceptionWhenTypeIsNotJWT() {
             objectNode.put("typ", "NOT-JWT");
 
-            Exception exception = Assertions.assertThrows(Exception.class,
-                    () -> JwtHeaderHelper.create(asBase64(objectNode.toString()))
-            );
-
-            assertThat(exception.getMessage(), is(containsString("typ is not \"JWT\"")));
+            assertThatThrownBy(() -> JwtHeaderHelper.create(asBase64(objectNode.toString())))
+                    .isInstanceOf(Exception.class)
+                    .hasMessageContaining("typ is not \"JWT\"");
         }
 
         @DisplayName("given a valid signer it should serialize without error")
@@ -63,11 +65,11 @@ class JwtHeaderHelperTest {
 
             JwtHeader header = JwtHeaderHelper.create(hmac.algorithm(), hmac.keyId(), hmac.keyURL());
 
-            assertThat(header.parameters.typ, is("JWT"));
-            assertThat(header.parameters.kid, is("fake-key"));
-            assertThat(header.parameters.alg, is("HS256"));
-            assertThat(header.parameters.enc, is(nullValue()));
-            assertThat(header.parameters.iv, is(nullValue()));
+            assertThat(header.parameters.typ).isEqualTo("JWT");
+            assertThat(header.parameters.kid).isEqualTo("fake-key");
+            assertThat(header.parameters.alg).isEqualTo("HS256");
+            assertThat(header.parameters.enc).isNull();
+            assertThat(header.parameters.iv).isNull();
         }
 
         @ParameterizedTest
@@ -77,7 +79,7 @@ class JwtHeaderHelperTest {
 
             JwtHeader header = JwtHeaderHelper.create(asBase64(objectNode.toString()));
 
-            assertThat(header.parameters.cty, is(validCty));
+            assertThat(header.parameters.cty).isEqualTo(validCty);
         }
 
         @Tag("https://tools.ietf.org/html/rfc7515#section-4")
@@ -95,16 +97,16 @@ class JwtHeaderHelperTest {
             final CommonSigner hmac = new CommonSigner("fake-key", "HMAC", null);
             JwtHeader header = JwtHeaderHelper.create(hmac.algorithm(), hmac.keyId(), hmac.keyURL());
 
-            assertThat(header.toString(), not(containsString("enc")));
-            assertThat(header.toString(), not(containsString("iv")));
-            assertThat(header.toString(), not(containsString("jwk")));
-            assertThat(header.toString(), not(containsString("x5u")));
-            assertThat(header.toString(), not(containsString("x5c")));
-            assertThat(header.toString(), not(containsString("x5t")));
-            assertThat(header.toString(), not(containsString("x5t#S256")));
-            assertThat(header.toString(), not(containsString("crit")));
-            // support not including `cty` if not present for back-compat
-            assertThat(header.toString(), not(containsString("cty")));
+            assertThat(header.toString()).doesNotContain("enc")
+                    .doesNotContain("iv")
+                    .doesNotContain("jwk")
+                    .doesNotContain("x5u")
+                    .doesNotContain("x5c")
+                    .doesNotContain("x5t")
+                    .doesNotContain("x5t#S256")
+                    .doesNotContain("crit")
+                    // support not including `cty` if not present for back-compat
+                    .doesNotContain("cty");
         }
 
         @DisplayName("Optional headers from JWS spec")
@@ -123,7 +125,7 @@ class JwtHeaderHelperTest {
 
                 JwtHeader header = JwtHeaderHelper.create(asBase64(objectNode.toString()));
 
-                assertThat(header.parameters.typ, is(validTyp));
+                assertThat(header.parameters.typ).isEqualTo(validTyp);
             }
 
             @DisplayName("should deserialize when provided optional enc/iv claims. " +
@@ -144,7 +146,7 @@ class JwtHeaderHelperTest {
 
                 JwtHeader header = JwtHeaderHelper.create(asBase64(objectNode.toString()));
 
-                assertThat(header.parameters.jwk.toString(), containsString("RSA"));
+                assertThat(header.parameters.jwk.toString()).contains("RSA");
             }
 
             @Test
@@ -158,10 +160,10 @@ class JwtHeaderHelperTest {
 
                 JwtHeader header = JwtHeaderHelper.create(asBase64(objectNode.toString()));
 
-                assertThat(header.parameters.x5u, is("x509_url"));
-                assertThat(header.parameters.x5c, is(Arrays.asList("x509_cert")));
-                assertThat(header.parameters.x5t, is("x509_thumbprint_sha1"));
-                assertThat(header.parameters.x5tS256, is("x509_sha256"));
+                assertThat(header.parameters.x5u).isEqualTo("x509_url");
+                assertThat(header.parameters.x5c).isEqualTo(List.of("x509_cert"));
+                assertThat(header.parameters.x5t).isEqualTo("x509_thumbprint_sha1");
+                assertThat(header.parameters.x5tS256).isEqualTo("x509_sha256");
             }
 
             @Test
@@ -173,25 +175,25 @@ class JwtHeaderHelperTest {
 
                 JwtHeader header = JwtHeaderHelper.create(asBase64(objectNode.toString()));
 
-                assertThat(header.parameters.crit, hasItems("first-val", "value-2"));
+                assertThat(header.parameters.crit).contains("first-val", "value-2");
             }
 
             @Test
-            void testInvalidHeader() {
-                assertThrows(IllegalArgumentException.class, () ->JwtHeaderHelper.create(""));
+            void invalidHeader() {
+                assertThatExceptionOfType(IllegalArgumentException.class).isThrownBy(() -> JwtHeaderHelper.create(""));
             }
         }
     }
 
     private void validateJwtHeaders(JwtHeader header) {
-        assertThat(header.parameters.typ, is("JWT"));
-        assertThat(header.parameters.kid, is("key-id"));
-        assertThat(header.parameters.alg, is("key-alg"));
-        assertThat(header.parameters.enc, is("key-encoding"));
-        assertThat(header.parameters.iv, is("key-init-vector"));
+        assertThat(header.parameters.typ).isEqualTo("JWT");
+        assertThat(header.parameters.kid).isEqualTo("key-id");
+        assertThat(header.parameters.alg).isEqualTo("key-alg");
+        assertThat(header.parameters.enc).isEqualTo("key-encoding");
+        assertThat(header.parameters.iv).isEqualTo("key-init-vector");
     }
 
     private String asBase64(String jwt) {
-        return new String(Base64.encode(jwt.getBytes()));
+        return new String(Base64.getEncoder().encode(jwt.getBytes()));
     }
 }

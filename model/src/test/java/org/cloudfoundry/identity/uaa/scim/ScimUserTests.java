@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ * *****************************************************************************
  *     Cloud Foundry
  *     Copyright (c) [2009-2016] Pivotal Software, Inc. All Rights Reserved.
  *
@@ -15,9 +16,8 @@ package org.cloudfoundry.identity.uaa.scim;
 import org.cloudfoundry.identity.uaa.approval.Approval;
 import org.cloudfoundry.identity.uaa.scim.ScimUser.Group;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
@@ -31,20 +31,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.fail;
 
 /**
  * @author Luke Taylor
  */
-public class ScimUserTests {
+class ScimUserTests {
 
     private static final String SCHEMAS = "\"schemas\": [\"urn:scim:schemas:core:1.0\"],";
     private ScimUser user;
     private ScimUser patch;
 
-    @Before
-    public void createUserToBePatched() {
+    @BeforeEach
+    void createUserToBePatched() {
         user = new ScimUser("id", "uname", "gname", "fname");
         user.setPassword("password");
         user.addEmail("test@example.org");
@@ -64,84 +65,82 @@ public class ScimUserTests {
     }
 
     @Test
-    public void testSerializeNullPhoneNumber() {
-        ScimUser user = new ScimUser("id","username","giveName","familyName");
+    void serializeNullPhoneNumber() {
+        ScimUser user = new ScimUser("id", "username", "giveName", "familyName");
         String json = JsonUtils.writeValueAsString(user);
         ScimUser user1 = JsonUtils.readValue(json, ScimUser.class);
+        assertThat(user1.getPhoneNumbers()).isNull();
 
         user.setPhoneNumbers(null);
         json = JsonUtils.writeValueAsString(user);
         user1 = JsonUtils.readValue(json, ScimUser.class);
+        assertThat(user1.getPhoneNumbers()).isNull();
 
         json = json.replace("\"id\":\"id\"", "\"id\":\"id\", \"phoneNumbers\":[]");
         user1 = JsonUtils.readValue(json, ScimUser.class);
-        assertNotNull(user1.getPhoneNumbers());
+        assertThat(user1.getPhoneNumbers()).isNotNull();
 
         json = json.replace("\"phoneNumbers\":[]", "\"phoneNumbers\":null");
         user1 = JsonUtils.readValue(json, ScimUser.class);
-        assertNotNull(user1.getPhoneNumbers());
-
-
+        assertThat(user1.getPhoneNumbers()).isNotNull();
     }
 
     @Test
-    public void test_logon_timestamps_are_null() {
+    void logon_timestamps_are_null() {
         String oldJson = "{\"id\":\"78df8903-58e9-4a1e-8e22-b0421f7d6d70\",\"meta\":{\"version\":0,\"created\":\"2015-08-21T15:09:26.830Z\",\"lastModified\":\"2015-08-21T15:09:26.830Z\"},\"userName\":\"jo!!!@foo.com\",\"name\":{\"familyName\":\"User\",\"givenName\":\"Jo\"},\"emails\":[{\"value\":\"jo!!!@foo.com\",\"primary\":false}],\"active\":true,\"verified\":false,\"origin\":\"uaa\",\"zoneId\":\"uaa\",\"passwordLastModified\":null,\"schemas\":[\"urn:scim:schemas:core:1.0\"]}";
         for (String json : Arrays.asList(oldJson, JsonUtils.writeValueAsString(new ScimUser()))) {
             ScimUser user = JsonUtils.readValue(json, ScimUser.class);
-            assertNull(json, user.getPreviousLogonTime());
-            assertNull(json, user.getLastLogonTime());
+            assertThat(user.getPreviousLogonTime()).as(json).isNull();
+            assertThat(user.getLastLogonTime()).as(json).isNull();
         }
     }
 
     @Test
-    public void testDeserializeNullPasswordLastModified() {
+    void deserializeNullPasswordLastModified() {
         String json = "{\"id\":\"78df8903-58e9-4a1e-8e22-b0421f7d6d70\",\"meta\":{\"version\":0,\"created\":\"2015-08-21T15:09:26.830Z\",\"lastModified\":\"2015-08-21T15:09:26.830Z\"},\"userName\":\"jo!!!@foo.com\",\"name\":{\"familyName\":\"User\",\"givenName\":\"Jo\"},\"emails\":[{\"value\":\"jo!!!@foo.com\",\"primary\":false}],\"active\":true,\"verified\":false,\"origin\":\"uaa\",\"zoneId\":\"uaa\",\"passwordLastModified\":null,\"schemas\":[\"urn:scim:schemas:core:1.0\"]}";
         JsonUtils.readValue(json, ScimUser.class);
     }
 
     @Test
-    public void minimalJsonMapsToUser() {
+    void minimalJsonMapsToUser() {
         String minimal = "{" + SCHEMAS +
-                        "  \"userName\": \"bjensen@example.com\"\n" +
-                        "}";
+                "  \"userName\": \"bjensen@example.com\"\n" +
+                "}";
 
         ScimUser user = JsonUtils.readValue(minimal, ScimUser.class);
-        assertEquals("bjensen@example.com", user.getUserName());
-        assertNull(user.getPassword());
+        assertThat(user.getUserName()).isEqualTo("bjensen@example.com");
+        assertThat(user.getPassword()).isNull();
     }
 
     @Test
-    public void passwordJsonMapsToUser() {
+    void passwordJsonMapsToUser() {
         String minimal = "{" + SCHEMAS +
-                        "  \"userName\": \"bjensen@example.com\",\n" +
-                        "  \"password\": \"foo\"\n" +
-                        "}";
+                "  \"userName\": \"bjensen@example.com\",\n" +
+                "  \"password\": \"foo\"\n" +
+                "}";
 
         ScimUser user = JsonUtils.readValue(minimal, ScimUser.class);
-        assertEquals("foo", user.getPassword());
+        assertThat(user.getPassword()).isEqualTo("foo");
     }
 
     @Test
-    public void minimalUserMapsToJson() throws Exception {
+    void minimalUserMapsToJson() throws Exception {
         ScimUser user = new ScimUser();
         user.setId("123");
         user.setUserName("joe");
         user.getMeta().setCreated(new SimpleDateFormat("yyyy-MM-dd").parse("2011-11-30"));
 
         String json = JsonUtils.writeValueAsString(user);
-        // System.err.println(json);
-        assertTrue(json.contains("\"userName\":\"joe\""));
-        assertTrue(json.contains("\"id\":\"123\""));
-        assertTrue(json.contains("\"meta\":"));
-        assertTrue(json.contains("\"created\":\"2011-11-30"));
-        assertTrue(json.matches(".*\\\"created\\\":\\\"([0-9-]*-?)T([0-9:.]*)Z\\\".*"));
-        assertFalse(json.contains("\"lastModified\":"));
-
+        assertThat(json).contains("\"userName\":\"joe\"")
+                .contains("\"id\":\"123\"")
+                .contains("\"meta\":")
+                .contains("\"created\":\"2011-11-30")
+                .matches(".*\\\"created\\\":\\\"([0-9-]*-?)T([0-9:.]*)Z\\\".*")
+                .doesNotContain("\"lastModified\":");
     }
 
     @Test
-    public void anotherUserMapsToJson() throws Exception {
+    void anotherUserMapsToJson() throws Exception {
         ScimUser user = new ScimUser();
         user.setId("123");
         user.setUserName("joe");
@@ -150,149 +149,148 @@ public class ScimUserTests {
         user.addPhoneNumber("+1-222-1234567");
 
         String json = JsonUtils.writeValueAsString(user);
-        // System.err.println(json);
-        assertTrue(json.contains("\"emails\":"));
-        assertTrue(json.contains("\"phoneNumbers\":"));
-
+        assertThat(json).contains("\"emails\":")
+                .contains("\"phoneNumbers\":");
     }
 
     @Test
-    public void userWithGroupsMapsToJson() {
+    void userWithGroupsMapsToJson() {
         ScimUser user = new ScimUser();
         user.setId("123");
         user.setUserName("joe");
         user.setGroups(Collections.singleton(new Group(null, "foo")));
 
         String json = JsonUtils.writeValueAsString(user);
-        // System.err.println(json);
-        assertTrue(json.contains("\"groups\":"));
+        assertThat(json).contains("\"groups\":");
     }
 
     @Test
-    public void emailsAreMappedCorrectly() {
-        String json = "{ \"userName\":\"bjensen\"," +
-                        "\"emails\": [\n" +
-                        "{\"value\": \"bj@jensen.org\",\"type\": \"other\"}," +
-                        "{\"value\": \"bjensen@example.com\", \"type\": \"work\",\"primary\": true}," +
-                        "{\"value\": \"babs@jensen.org\",\"type\": \"home\"}" +
-                        "],\n" +
-                        "\"schemas\":[\"urn:scim:schemas:core:1.0\"]}";
+    void emailsAreMappedCorrectly() {
+        String json = """
+                { "userName":"bjensen",\
+                "emails": [
+                {"value": "bj@jensen.org","type": "other"},\
+                {"value": "bjensen@example.com", "type": "work","primary": true},\
+                {"value": "babs@jensen.org","type": "home"}\
+                ],
+                "schemas":["urn:scim:schemas:core:1.0"]}\
+                """;
         ScimUser user = JsonUtils.readValue(json, ScimUser.class);
-        assertEquals(3, user.getEmails().size());
-        assertEquals("bjensen@example.com", user.getEmails().get(1).getValue());
-        assertEquals("babs@jensen.org", user.getEmails().get(2).getValue());
-        assertEquals("bjensen@example.com", user.getPrimaryEmail());
-        assertFalse(user.getEmails().get(0).isPrimary());
+        assertThat(user.getEmails()).hasSize(3);
+        assertThat(user.getEmails().get(1).getValue()).isEqualTo("bjensen@example.com");
+        assertThat(user.getEmails().get(2).getValue()).isEqualTo("babs@jensen.org");
+        assertThat(user.getPrimaryEmail()).isEqualTo("bjensen@example.com");
+        assertThat(user.getEmails().getFirst().isPrimary()).isFalse();
     }
 
     @Test
-    public void groupsAreMappedCorrectly() {
-        String json = "{ \"userName\":\"bjensen\"," +
-                        "\"groups\": [\n" +
-                        "{\"value\": \"12345\",\"display\": \"uaa.admin\"}," +
-                        "{\"value\": \"123456\",\"display\": \"dash.admin\"}" +
-                        "],\n" +
-                        "\"schemas\":[\"urn:scim:schemas:core:1.0\"]}";
+    void groupsAreMappedCorrectly() {
+        String json = """
+                { "userName":"bjensen",\
+                "groups": [
+                {"value": "12345","display": "uaa.admin"},\
+                {"value": "123456","display": "dash.admin"}\
+                ],
+                "schemas":["urn:scim:schemas:core:1.0"]}\
+                """;
         ScimUser user = JsonUtils.readValue(json, ScimUser.class);
-        assertEquals(2, user.getGroups().size());
+        assertThat(user.getGroups()).hasSize(2);
     }
 
     @Test
-    public void datesAreMappedCorrectly() {
+    void datesAreMappedCorrectly() {
         String json = "{ \"userName\":\"bjensen\"," +
-                        "\"meta\":{\"version\":10,\"created\":\"2011-11-30T10:46:16.475Z\"}}";
+                "\"meta\":{\"version\":10,\"created\":\"2011-11-30T10:46:16.475Z\"}}";
         ScimUser user = JsonUtils.readValue(json, ScimUser.class);
-        assertEquals(10, user.getVersion());
-        assertEquals("2011-11-30", new SimpleDateFormat("yyyy-MM-dd").format(user.getMeta().getCreated()));
+        assertThat(user.getVersion()).isEqualTo(10);
+        assertThat(new SimpleDateFormat("yyyy-MM-dd").format(user.getMeta().getCreated())).isEqualTo("2011-11-30");
     }
 
     @Test
-    public void basicNamesAreMappedCorrectly() {
+    void basicNamesAreMappedCorrectly() {
         ScimUser roz = new ScimUser("1234", "roz", "Roslyn", "MacRae");
-        assertEquals("1234", roz.getId());
-        assertEquals("roz", roz.getUserName());
-        assertEquals("Roslyn", roz.getGivenName());
-        assertEquals("MacRae", roz.getFamilyName());
+        assertThat(roz.getId()).isEqualTo("1234");
+        assertThat(roz.getUserName()).isEqualTo("roz");
+        assertThat(roz.getGivenName()).isEqualTo("Roslyn");
+        assertThat(roz.getFamilyName()).isEqualTo("MacRae");
         roz.setId("12345");
-        assertEquals("12345", roz.getId());
-        assertEquals("roz", roz.getUserName());
-        assertEquals("Roslyn", roz.getGivenName());
-        assertEquals("MacRae", roz.getFamilyName());
+        assertThat(roz.getId()).isEqualTo("12345");
+        assertThat(roz.getUserName()).isEqualTo("roz");
+        assertThat(roz.getGivenName()).isEqualTo("Roslyn");
+        assertThat(roz.getFamilyName()).isEqualTo("MacRae");
         roz.setUserName("roz1");
-        assertEquals("12345", roz.getId());
-        assertEquals("roz1", roz.getUserName());
-        assertEquals("Roslyn", roz.getGivenName());
-        assertEquals("MacRae", roz.getFamilyName());
-        ScimUser.Name name = new ScimUser.Name("Roslyn","MacRae");
+        assertThat(roz.getId()).isEqualTo("12345");
+        assertThat(roz.getUserName()).isEqualTo("roz1");
+        assertThat(roz.getGivenName()).isEqualTo("Roslyn");
+        assertThat(roz.getFamilyName()).isEqualTo("MacRae");
+        ScimUser.Name name = new ScimUser.Name("Roslyn", "MacRae");
         roz.setName(name);
-        assertSame(name, roz.getName());
-        assertNull(roz.getApprovals());
+        assertThat(roz.getName()).isSameAs(name);
+        assertThat(roz.getApprovals()).isNull();
         Set<Approval> approvals = new HashSet<>();
         roz.setApprovals(approvals);
-        assertSame(approvals, roz.getApprovals());
+        assertThat(roz.getApprovals()).isSameAs(approvals);
         List<ScimUser.PhoneNumber> phoneNumbers = new LinkedList<>();
         ScimUser.PhoneNumber p1 = new ScimUser.PhoneNumber();
         phoneNumbers.add(p1);
         roz.setPhoneNumbers(phoneNumbers);
-        assertNotNull(roz.getPhoneNumbers());
-        assertTrue(roz.getPhoneNumbers().isEmpty());
+        assertThat(roz.getPhoneNumbers()).isEmpty();
         p1.setValue("value");
         p1.setType("type");
         roz.setPhoneNumbers(phoneNumbers);
-        assertNotNull(roz.getPhoneNumbers());
-        assertEquals(1, roz.getPhoneNumbers().size());
+        assertThat(roz.getPhoneNumbers()).hasSize(1);
 
-        assertNull(roz.getDisplayName());
+        assertThat(roz.getDisplayName()).isNull();
         roz.setDisplayName("DisplayName");
-        assertEquals("DisplayName", roz.getDisplayName());
+        assertThat(roz.getDisplayName()).isEqualTo("DisplayName");
 
-        assertNull(roz.getProfileUrl());
+        assertThat(roz.getProfileUrl()).isNull();
         roz.setProfileUrl("ProfileUrl");
-        assertEquals("ProfileUrl", roz.getProfileUrl());
+        assertThat(roz.getProfileUrl()).isEqualTo("ProfileUrl");
 
-        assertNull(roz.getTitle());
+        assertThat(roz.getTitle()).isNull();
         roz.setTitle("Title");
-        assertEquals("Title", roz.getTitle());
+        assertThat(roz.getTitle()).isEqualTo("Title");
 
-        assertNull(roz.getUserType());
+        assertThat(roz.getUserType()).isNull();
         roz.setUserType("UserType");
-        assertEquals("UserType", roz.getUserType());
+        assertThat(roz.getUserType()).isEqualTo("UserType");
 
-        assertNull(roz.getPreferredLanguage());
+        assertThat(roz.getPreferredLanguage()).isNull();
         roz.setPreferredLanguage("PreferredLanguage");
-        assertEquals("PreferredLanguage", roz.getPreferredLanguage());
+        assertThat(roz.getPreferredLanguage()).isEqualTo("PreferredLanguage");
 
-        assertNull(roz.getLocale());
+        assertThat(roz.getLocale()).isNull();
         roz.setLocale("Locale");
-        assertEquals("Locale", roz.getLocale());
+        assertThat(roz.getLocale()).isEqualTo("Locale");
 
-        assertTrue(roz.isActive());
+        assertThat(roz.isActive()).isTrue();
         roz.setActive(false);
-        assertFalse(roz.isActive());
+        assertThat(roz.isActive()).isFalse();
 
-        assertNull(roz.getTimezone());
+        assertThat(roz.getTimezone()).isNull();
         roz.setTimezone("Timezone");
-        assertEquals("Timezone", roz.getTimezone());
+        assertThat(roz.getTimezone()).isEqualTo("Timezone");
 
-        assertEquals("",roz.getOrigin());
+        assertThat(roz.getOrigin()).isEmpty();
         roz.setOrigin("Origin");
-        assertEquals("Origin", roz.getOrigin());
+        assertThat(roz.getOrigin()).isEqualTo("Origin");
 
-        assertEquals("",roz.getExternalId());
+        assertThat(roz.getExternalId()).isEmpty();
         roz.setExternalId("ExternalId");
-        assertEquals("ExternalId", roz.getExternalId());
+        assertThat(roz.getExternalId()).isEqualTo("ExternalId");
 
-        assertNull(roz.getNickName());
+        assertThat(roz.getNickName()).isNull();
         roz.setNickName("NickName");
-        assertEquals("NickName", roz.getNickName());
+        assertThat(roz.getNickName()).isEqualTo("NickName");
 
-        assertTrue(roz.isVerified());
+        assertThat(roz.isVerified()).isTrue();
         roz.setVerified(false);
-        assertFalse(roz.isVerified());
+        assertThat(roz.isVerified()).isFalse();
     }
 
     @Test
-    public void testSpelFilter() {
+    void spelFilter() {
         ScimUser user = new ScimUser();
         user.setId("123");
         user.setUserName("joe");
@@ -300,24 +298,23 @@ public class ScimUserTests {
         email.setValue("foo@bar.com");
         user.setEmails(Collections.singletonList(email));
         StandardEvaluationContext context = new StandardEvaluationContext(user);
-        assertTrue(new SpelExpressionParser().parseExpression(
-                        "userName == 'joe' and !(emails.?[value=='foo@bar.com']).empty").getValue(context,
-                        Boolean.class));
+        assertThat(new SpelExpressionParser().parseExpression(
+                "userName == 'joe' and !(emails.?[value=='foo@bar.com']).empty").getValue(context,
+                Boolean.class)).isTrue();
     }
 
     @Test
-    public void testSetPrimaryEmail() {
+    void setPrimaryEmail() {
         ScimUser user = new ScimUser();
 
-
-        assertNull(user.getPrimaryEmail());
+        assertThat(user.getPrimaryEmail()).isNull();
         user.setPrimaryEmail("email0@bar.com");
-        assertEquals("email0@bar.com", user.getPrimaryEmail());
+        assertThat(user.getPrimaryEmail()).isEqualTo("email0@bar.com");
 
         ScimUser.Email email1 = new ScimUser.Email();
         email1.setValue("email1@bar.com");
         user.setEmails(new LinkedList<>(Collections.singletonList(email1)));
-        assertEquals("email1@bar.com", user.getPrimaryEmail());
+        assertThat(user.getPrimaryEmail()).isEqualTo("email1@bar.com");
 
         email1.setPrimary(true);
         ScimUser.Email email2 = new ScimUser.Email();
@@ -332,122 +329,120 @@ public class ScimUserTests {
 
         user.setPrimaryEmail(newEmail.getValue());
 
-        Assert.assertEquals("new@example.com", user.getPrimaryEmail());
+        assertThat(user.getPrimaryEmail()).isEqualTo("new@example.com");
 
-        Assert.assertEquals(Arrays.asList(newEmail, email2, email3), user.getEmails());
+        assertThat(user.getEmails()).isEqualTo(Arrays.asList(newEmail, email2, email3));
 
         try {
             user.addEmail("email3@bar.com");
-            fail();
+            fail("");
         } catch (IllegalArgumentException x) {
-            assertEquals("Already contains email email3@bar.com", x.getMessage());
+            assertThat(x.getMessage()).isEqualTo("Already contains email email3@bar.com");
         }
         user.setUserName("userName");
         user.setNickName("nickName");
         user.setName(new ScimUser.Name("givenName", "familyName"));
-        assertNotNull(user.wordList());
-        assertFalse(user.wordList().isEmpty());
-        assertEquals(7, user.wordList().size());
+        assertThat(user.wordList()).hasSize(7);
     }
 
     @Test
-    public void testGroupSettersGetters() {
+    void groupSettersGetters() {
         Group group = new Group("id", "display", Group.Type.DIRECT);
         group.setType(Group.Type.DIRECT);
-        assertEquals(Group.Type.DIRECT, group.getType());
+        assertThat(group.getType()).isEqualTo(Group.Type.DIRECT);
         group.setType(Group.Type.INDIRECT);
-        assertEquals(Group.Type.INDIRECT, group.getType());
+        assertThat(group.getType()).isEqualTo(Group.Type.INDIRECT);
         group.setType(null);
-        assertNull(group.getType());
+        assertThat(group.getType()).isNull();
 
         Group group1 = new Group("id", "display", Group.Type.DIRECT);
         Group group2 = new Group("id", "display", Group.Type.DIRECT);
-        assertEquals(group1, group2);
-        assertEquals(group2, group1);
-        assertNotEquals(null, group1);
-        assertNotEquals(group1, new Object());
+        assertThat(group2).isEqualTo(group1);
+        assertThat(group1)
+                .isEqualTo(group2);
+        assertThat(new Object()).isNotEqualTo(group1);
         group1.setValue(null);
-        assertNotEquals(group1, group2);
-        assertNotEquals(group2, group1);
+        assertThat(group2).isNotEqualTo(group1);
+        assertThat(group1).isNotEqualTo(group2);
         group2.setValue(null);
-        assertEquals(group1, group2);
+        assertThat(group2).isEqualTo(group1);
         group1.setDisplay(null);
-        assertNotEquals(group1, group2);
-        assertNotEquals(group2, group1);
+        assertThat(group2).isNotEqualTo(group1);
+        assertThat(group1).isNotEqualTo(group2);
         group2.setDisplay(null);
-        assertEquals(group1, group2);
-        assertNotNull(group2.toString());
+        assertThat(group2).isEqualTo(group1);
+        assertThat(group2.toString()).isNotNull();
     }
 
     @Test
-    public void testName() {
+    void name() {
         ScimUser.Name name1 = new ScimUser.Name();
-        assertNull(name1.getFamilyName());
-        assertNull(name1.getFormatted());
-        assertNull(name1.getGivenName());
-        assertNull(name1.getHonorificPrefix());
-        assertNull(name1.getHonorificSuffix());
-        assertNull(name1.getMiddleName());
+        assertThat(name1.getFamilyName()).isNull();
+        assertThat(name1.getFormatted()).isNull();
+        assertThat(name1.getGivenName()).isNull();
+        assertThat(name1.getHonorificPrefix()).isNull();
+        assertThat(name1.getHonorificSuffix()).isNull();
+        assertThat(name1.getMiddleName()).isNull();
 
         name1.setFamilyName("familyName");
-        assertEquals("familyName", name1.getFamilyName());
+        assertThat(name1.getFamilyName()).isEqualTo("familyName");
         name1.setGivenName("givenName");
-        assertEquals("givenName", name1.getGivenName());
-        assertNull(name1.getFormatted());
+        assertThat(name1.getGivenName()).isEqualTo("givenName");
+        assertThat(name1.getFormatted()).isNull();
         name1.setHonorificPrefix("honorificPrefix");
-        assertEquals("honorificPrefix", name1.getHonorificPrefix());
+        assertThat(name1.getHonorificPrefix()).isEqualTo("honorificPrefix");
         name1.setHonorificSuffix("honorificSuffix");
-        assertEquals("honorificSuffix", name1.getHonorificSuffix());
+        assertThat(name1.getHonorificSuffix()).isEqualTo("honorificSuffix");
         name1.setFormatted("formatted");
-        assertEquals("formatted", name1.getFormatted());
+        assertThat(name1.getFormatted()).isEqualTo("formatted");
         name1.setMiddleName("middle");
-        assertEquals("middle", name1.getMiddleName());
+        assertThat(name1.getMiddleName()).isEqualTo("middle");
         ScimUser.Name name2 = new ScimUser.Name("givenName", "familyName");
-        assertEquals("givenName familyName", name2.getFormatted());
+        assertThat(name2.getFormatted()).isEqualTo("givenName familyName");
     }
 
     @Test
-    public void testEmail() {
+    void email() {
         ScimUser.Email email1 = new ScimUser.Email();
         ScimUser.Email email2 = new ScimUser.Email();
-        assertEquals(email1, email2);
-        assertEquals(email2, email1);
-        assertEquals(email1.hashCode(), email2.hashCode());
+        assertThat(email2).isEqualTo(email1);
+        assertThat(email1).isEqualTo(email2);
+        assertThat(email2).hasSameHashCodeAs(email1);
         email1.setPrimary(true);
-        assertNotEquals(email1, email2);
-        assertNotEquals(email2, email1);
+        assertThat(email2).isNotEqualTo(email1);
+        assertThat(email1).isNotEqualTo(email2);
         email2.setPrimary(true);
-        assertEquals(email1, email2);
-        assertEquals(email2, email1);
-        assertEquals(email1.hashCode(), email2.hashCode());
+        assertThat(email2).isEqualTo(email1);
+        assertThat(email1).isEqualTo(email2);
+        assertThat(email2).hasSameHashCodeAs(email1);
         email1.setType("work");
-        assertNotEquals(email1, email2);
-        assertNotEquals(email2, email1);
+        assertThat(email2).isNotEqualTo(email1);
+        assertThat(email1).isNotEqualTo(email2);
         email2.setType("home");
-        assertNotEquals(email1, email2);
-        assertNotEquals(email2, email1);
+        assertThat(email2).isNotEqualTo(email1);
+        assertThat(email1).isNotEqualTo(email2);
         email2.setType("work");
-        assertEquals(email1, email2);
-        assertEquals(email2, email1);
-        assertEquals(email1.hashCode(), email2.hashCode());
+        assertThat(email2).isEqualTo(email1);
+        assertThat(email1).isEqualTo(email2);
+        assertThat(email2).hasSameHashCodeAs(email1);
         email1.setValue("value@value.org");
-        assertNotEquals(email1, email2);
-        assertNotEquals(email2, email1);
+        assertThat(email2).isNotEqualTo(email1);
+        assertThat(email1).isNotEqualTo(email2);
         email2.setValue("value@value.org");
-        assertEquals(email1, email2);
-        assertEquals(email2, email1);
-        assertEquals(email1.hashCode(), email2.hashCode());
+        assertThat(email2).isEqualTo(email1);
+        assertThat(email1).isEqualTo(email2);
+        assertThat(email2).hasSameHashCodeAs(email1);
     }
 
     @Test
-    public void testPhoneNumber() {
+    void phoneNumber() {
         ScimUser.PhoneNumber p1 = new ScimUser.PhoneNumber();
-        assertNull(p1.getType());
-        assertNull(p1.getValue());
+        assertThat(p1.getType()).isNull();
+        assertThat(p1.getValue()).isNull();
         p1.setValue("value");
         p1.setType("type");
-        assertEquals("value",p1.getValue());
-        assertEquals("type", p1.getType());
+        assertThat(p1.getValue()).isEqualTo("value");
+        assertThat(p1.getType()).isEqualTo("type");
         ScimUser user = new ScimUser();
         user.setPhoneNumbers(Collections.singletonList(p1));
 
@@ -459,79 +454,77 @@ public class ScimUserTests {
     }
 
     @Test
-    public void testPasswordLastModified() {
+    void passwordLastModified() {
         ScimUser user = new ScimUser();
-        assertNull(user.getPasswordLastModified());
+        assertThat(user.getPasswordLastModified()).isNull();
         user.setId("someid");
-        assertSame(user.getMeta().getCreated(), user.getPasswordLastModified());
+        assertThat(user.getPasswordLastModified()).isSameAs(user.getMeta().getCreated());
 
         Date d = new Date(System.currentTimeMillis());
         user.setPasswordLastModified(d);
-        assertNotNull(user.getPasswordLastModified());
-        assertSame(d, user.getPasswordLastModified());
-
+        assertThat(user.getPasswordLastModified()).isSameAs(d);
     }
 
     @Test
-    public void user_verified_byDefault() {
+    void user_verified_byDefault() {
         ScimUser user = new ScimUser();
-        assertTrue(user.isVerified());
+        assertThat(user.isVerified()).isTrue();
     }
 
     @Test
-    public void test_patch_last_logon() {
+    void patch_last_logon() {
         patch.setLastLogonTime(System.currentTimeMillis());
         user.patch(patch);
-        assertNull(user.getLastLogonTime());
+        assertThat(user.getLastLogonTime()).isNull();
     }
 
     @Test
-    public void test_patch_previous_logon() {
+    void patch_previous_logon() {
         patch.setPreviousLogonTime(System.currentTimeMillis());
         user.patch(patch);
-        assertNull(user.getPreviousLogonTime());
+        assertThat(user.getPreviousLogonTime()).isNull();
     }
 
     @Test
-    public void testPatchAliasId() {
+    void patchAliasId() {
         final String aliasId = UUID.randomUUID().toString();
         patch.setAliasId(aliasId);
         user.patch(patch);
-        assertEquals(aliasId, user.getAliasId());
+        assertThat(user.getAliasId()).isEqualTo(aliasId);
     }
 
     @Test
-    public void testPatchAliasZid() {
+    void patchAliasZid() {
         final String aliasZid = UUID.randomUUID().toString();
         patch.setAliasZid(aliasZid);
         user.patch(patch);
-        assertEquals(aliasZid, user.getAliasZid());
+        assertThat(user.getAliasZid()).isEqualTo(aliasZid);
     }
 
     @Test
-    public void testAliasPropertiesGettersAndSetters() {
+    void aliasPropertiesGettersAndSetters() {
         final String aliasId = UUID.randomUUID().toString();
         final String aliasZid = UUID.randomUUID().toString();
 
         final ScimUser scimUser = new ScimUser("id", "uname", "gname", "fname");
         scimUser.setAliasId(aliasId);
         scimUser.setAliasZid(aliasZid);
-        assertEquals(aliasId, scimUser.getAliasId());
-        assertEquals(aliasZid, scimUser.getAliasZid());
+        assertThat(scimUser.getAliasId()).isEqualTo(aliasId);
+        assertThat(scimUser.getAliasZid()).isEqualTo(aliasZid);
     }
 
     @Test
-    public void testPatchUserSetPrimaryEmail() {
+    void patchUserSetPrimaryEmail() {
         ScimUser.Email newMail = new ScimUser.Email();
         newMail.setPrimary(true);
         newMail.setValue("newTest@example.org");
         patch.setEmails(Collections.singletonList(newMail));
         user.patch(patch);
-        assertEquals("newTest@example.org", user.getPrimaryEmail());
+        assertThat(user.getPrimaryEmail()).isEqualTo("newTest@example.org");
     }
 
     @Test
-    public void testPatchUserSelectPrimaryEmailFromList() {
+    void patchUserSelectPrimaryEmailFromList() {
         ScimUser.Email newMail = new ScimUser.Email();
         newMail.setPrimary(false);
         newMail.setValue("newTest@example.org");
@@ -540,83 +533,84 @@ public class ScimUserTests {
         newMail.setValue("secondTest@example.org");
         patch.setEmails(Arrays.asList(newMail, secondMail));
         user.patch(patch);
-        assertEquals("secondTest@example.org", user.getPrimaryEmail());
+        assertThat(user.getPrimaryEmail()).isEqualTo("secondTest@example.org");
         //complex property is merged. not replaced.
-        assertEquals(3, user.getEmails().size());
+        assertThat(user.getEmails()).hasSize(3);
 
         //drop the email first
-        patch.getMeta().setAttributes(new String[] {"emails"});
+        patch.getMeta().setAttributes(new String[]{"emails"});
         user.patch(patch);
-        assertEquals("secondTest@example.org", user.getPrimaryEmail());
-        assertEquals(2, user.getEmails().size());
+        assertThat(user.getPrimaryEmail()).isEqualTo("secondTest@example.org");
+        assertThat(user.getEmails()).hasSize(2);
     }
 
     @Test
-    public void testPatchUserChangeUserName() {
+    void patchUserChangeUserName() {
         patch.setUserName("newUsername");
         user.patch(patch);
-        assertEquals("newUsername", user.getUserName());
+        assertThat(user.getUserName()).isEqualTo("newUsername");
 
         //username is a required field
-        patch.getMeta().setAttributes(new String[] {"username"});
+        patch.getMeta().setAttributes(new String[]{"username"});
         patch.setUserName(null);
         try {
             user.patch(patch);
             fail("username is a required field, can't nullify it.");
         } catch (IllegalArgumentException ignored) {
+            // ignore
         }
-        assertNotNull(user.getUserName());
+        assertThat(user.getUserName()).isNotNull();
 
         //we can drop and set the username again
         patch.setUserName("newUsername2");
         user.patch(patch);
-        assertEquals("newUsername2", user.getUserName());
+        assertThat(user.getUserName()).isEqualTo("newUsername2");
     }
 
     @Test
-    public void testPatchUserChangeName() {
+    void patchUserChangeName() {
         patch.setName(new ScimUser.Name("Test", "Name"));
         user.patch(patch);
-        assertEquals("Test", user.getName().getGivenName());
-        assertEquals("Name", user.getName().getFamilyName());
+        assertThat(user.getName().getGivenName()).isEqualTo("Test");
+        assertThat(user.getName().getFamilyName()).isEqualTo("Name");
     }
 
     @Test
-    public void testPatchUserDropName() {
-        patch.setName(new ScimUser.Name("given-only",null));
+    void patchUserDropName() {
+        patch.setName(new ScimUser.Name("given-only", null));
         user.patch(patch);
-        assertEquals("given-only", user.getName().getGivenName());
-        assertNotNull(user.getName().getFamilyName());
+        assertThat(user.getName().getGivenName()).isEqualTo("given-only");
+        assertThat(user.getName().getFamilyName()).isNotNull();
 
         patch.getMeta().setAttributes(new String[]{"NAME"});
         user.patch(patch);
-        assertEquals("given-only", user.getName().getGivenName());
-        assertNull(user.getName().getFamilyName());
+        assertThat(user.getName().getGivenName()).isEqualTo("given-only");
+        assertThat(user.getName().getFamilyName()).isNull();
     }
 
     @Test
-    public void testPatchUserDropNameSubAttributes() {
+    void patchUserDropNameSubAttributes() {
         patch.setName(null);
         patch.getMeta().setAttributes(new String[]{"name.givenname"});
         user.patch(patch);
-        assertNull(user.getName().getGivenName());
-        assertNotNull(user.getName().getFamilyName());
+        assertThat(user.getName().getGivenName()).isNull();
+        assertThat(user.getName().getFamilyName()).isNotNull();
 
         patch.getMeta().setAttributes(new String[]{"Name.familyname"});
         user.patch(patch);
-        assertNull(user.getName().getGivenName());
-        assertNull(user.getName().getFamilyName());
+        assertThat(user.getName().getGivenName()).isNull();
+        assertThat(user.getName().getFamilyName()).isNull();
     }
 
     @Test
-    public void testPatchUserRejectChangingOrigin() {
+    void patchUserRejectChangingOrigin() {
         patch.setOrigin("some-new-origin");
         assertThatIllegalArgumentException().isThrownBy(() -> user.patch(patch))
-                        .withMessage("Cannot change origin in patch of user.");
+                .withMessage("Cannot change origin in patch of user.");
     }
 
     @Test
-    public void testPatchUserDropNonUsedAttributes() {
+    void patchUserDropNonUsedAttributes() {
         int pos = 0;
         allSet(pos++);
         setAndPatchAndValidate("displayname", pos++);
@@ -634,7 +628,7 @@ public class ScimUserTests {
         setAndPatchAndValidate("preferredlanguage", pos++);
 
         pos--;
-        patch.setName(new ScimUser.Name(null,null));
+        patch.setName(new ScimUser.Name(null, null));
         patch.getName().setFormatted(null);
 
         patch.setPreferredLanguage("test");
@@ -676,20 +670,20 @@ public class ScimUserTests {
         patch.setDisplayName("test");
         setAndPatchAndValidate("displayname", --pos);
 
-        assertEquals(0, pos);
+        assertThat(pos).isZero();
     }
 
     public void setAndPatchAndValidate(String attribute, int nullable) {
-        patch.getMeta().setAttributes(new String[] {attribute});
+        patch.getMeta().setAttributes(new String[]{attribute});
         user.patch(patch);
         allSet(nullable);
     }
 
     public void doAssertNull(int skip, int pos, Object value) {
-        if (skip<=pos) {
-            assertNotNull(value);
+        if (skip <= pos) {
+            assertThat(value).isNotNull();
         } else {
-            assertNull(value);
+            assertThat(value).isNull();
         }
     }
 
@@ -711,65 +705,42 @@ public class ScimUserTests {
     }
 
     @Test
-    public void testPatchUserDropAndChangeName() {
+    void patchUserDropAndChangeName() {
         patch.getMeta().setAttributes(new String[]{"NAME"});
         user.patch(patch);
-        assertNull(user.getName().getGivenName());
-        assertNull(user.getName().getFamilyName());
+        assertThat(user.getName().getGivenName()).isNull();
+        assertThat(user.getName().getFamilyName()).isNull();
 
         patch.setName(new ScimUser.Name("Test", "Name"));
         user.patch(patch);
-        assertEquals("Test", user.getName().getGivenName());
-        assertEquals("Name", user.getName().getFamilyName());
+        assertThat(user.getName().getGivenName()).isEqualTo("Test");
+        assertThat(user.getName().getFamilyName()).isEqualTo("Name");
     }
 
     @Test
-    public void testPatchUserChangePhone() {
+    void patchUserChangePhone() {
         ScimUser.PhoneNumber newNumber = new ScimUser.PhoneNumber("9876543210");
         patch.setPhoneNumbers(Collections.singletonList(newNumber));
         user.patch(patch);
-        assertEquals(2, user.getPhoneNumbers().size());
-        assertEquals(newNumber.getValue(), user.getPhoneNumbers().get(0).getValue());
+        assertThat(user.getPhoneNumbers()).hasSize(2);
+        assertThat(user.getPhoneNumbers().getFirst().getValue()).isEqualTo(newNumber.getValue());
     }
 
     @Test
-    public void testPatchUserDropPhone() {
+    void patchUserDropPhone() {
         patch.getMeta().setAttributes(new String[]{"PhOnEnUmBeRs"});
         user.patch(patch);
-        assertNull(patch.getPhoneNumbers());
+        assertThat(patch.getPhoneNumbers()).isNull();
 
         ScimUser.PhoneNumber newNumber = new ScimUser.PhoneNumber("9876543210");
         patch.setPhoneNumbers(Collections.singletonList(newNumber));
         user.patch(patch);
-        assertEquals(1, user.getPhoneNumbers().size());
-        assertEquals(newNumber.getValue(), user.getPhoneNumbers().get(0).getValue());
+        assertThat(user.getPhoneNumbers()).hasSize(1);
+        assertThat(user.getPhoneNumbers().getFirst().getValue()).isEqualTo(newNumber.getValue());
     }
 
     @Test
-    public void testPatch_Drop_Using_Attributes() {
-        String[] s = {
-                "username",
-                "Name",
-                "Emails",
-                "hOnEnUmBeRs",
-                "DisplayName",
-                "NickName",
-                "ProfileUrl",
-                "Title",
-                "PreferredLanguage",
-                "Locale",
-                "Timezone",
-                "Name.familyName",
-                "Name.givenName",
-                "Name.formatted",
-                "Name.honorificPreFix",
-                "Name.honorificSuffix",
-                "Name.middleName"
-        };
-    }
-
-    @Test
-    public void testPatchUserDropAndChangePhone() {
+    void patchUserDropAndChangePhone() {
         ScimUser user = new ScimUser(null, "uname", "gname", "fname");
         user.setPassword("password");
         user.addEmail("test@example.org");
@@ -780,11 +751,11 @@ public class ScimUserTests {
         patch.setPhoneNumbers(Collections.singletonList(newNumber));
         user.patch(patch);
 
-        assertEquals(newNumber.getValue(), user.getPhoneNumbers().get(0).getValue());
+        assertThat(user.getPhoneNumbers().getFirst().getValue()).isEqualTo(newNumber.getValue());
     }
 
     @Test
-    public void testCannotPatchActiveFalse() {
+    void cannotPatchActiveFalse() {
         ScimUser user = new ScimUser(null, "uname", "gname", "fname");
         user.setPassword("password");
         user.addEmail("test@example.org");
@@ -793,11 +764,11 @@ public class ScimUserTests {
         patchUser.setActive(false);
         patchUser.patch(user);
 
-        assertTrue(patchUser.isActive());
+        assertThat(patchUser.isActive()).isTrue();
     }
 
     @Test
-    public void testCannotPatchVerifiedFalse() {
+    void cannotPatchVerifiedFalse() {
         ScimUser user = new ScimUser(null, "uname", "gname", "fname");
         user.setPassword("password");
         user.addEmail("test@example.org");
@@ -806,11 +777,11 @@ public class ScimUserTests {
         patchUser.setVerified(false);
         patchUser.patch(user);
 
-        assertTrue(patchUser.isActive());
+        assertThat(patchUser.isActive()).isTrue();
     }
 
     @Test
-    public void testPatchActive() {
+    void patchActive() {
         ScimUser user = new ScimUser(null, "uname", "gname", "fname");
         user.setPassword("password");
         user.addEmail("test@example.org");
@@ -820,18 +791,26 @@ public class ScimUserTests {
         patchUser.setActive(true);
         patchUser.patch(user);
 
-        assertFalse(patchUser.isActive());
+        assertThat(patchUser.isActive()).isFalse();
 
         user.setActive(true);
         patchUser.patch(user);
-        assertTrue(patchUser.isActive());
+        assertThat(patchUser.isActive()).isTrue();
     }
 
     @Test
-    public void testPatchVerified() {
+    void scimUserAliasDeserialization() {
+        user.setAliasId("aliasId");
+        user.setAliasZid("custom");
+        String staticJson = "{\"id\":\"id\",\"externalId\":\"\",\"meta\":{\"version\":0},\"userName\":\"uname\",\"name\":{\"formatted\":\"gname fname\",\"familyName\":\"fname\",\"givenName\":\"gname\"},\"emails\":[{\"value\":\"test@example.org\",\"primary\":false}],\"phoneNumbers\":[{\"value\":\"0123456789\"}],\"displayName\":\"display\",\"title\":\"title\",\"locale\":\"en.UTF-8\",\"active\":true,\"verified\":true,\"origin\":\"\",\"aliasZid\":\"custom\",\"aliasId\":\"aliasId\",\"password\":\"password\",\"schemas\":[\"urn:scim:schemas:core:1.0\"]}";
+        assertThat(JsonUtils.readValue(staticJson, ScimUser.class)).isEqualTo(user);
+    }
+
+    @Test
+    void patchVerified() {
         user.setVerified(false);
         patch.setVerified(true);
         user.patch(patch);
-        assertTrue(user.isVerified());
+        assertThat(user.isVerified()).isTrue();
     }
 }

@@ -21,17 +21,17 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletRequestWrapper;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.springframework.security.oauth2.common.util.OAuth2Utils.RESPONSE_TYPE;
+import static org.cloudfoundry.identity.uaa.oauth.common.util.OAuth2Utils.RESPONSE_TYPE;
 
 public class DisableIdTokenResponseTypeFilter extends OncePerRequestFilter {
 
@@ -56,7 +56,7 @@ public class DisableIdTokenResponseTypeFilter extends OncePerRequestFilter {
     }
 
     protected boolean applyPath(String path) {
-        if (paths==null || paths.size()==0 || path == null) {
+        if (paths == null || paths.isEmpty() || path == null) {
             return false;
         }
         AntPathMatcher matcher = new AntPathMatcher();
@@ -79,17 +79,17 @@ public class DisableIdTokenResponseTypeFilter extends OncePerRequestFilter {
         logger.debug("Processing id_token disable filter");
 
         HttpServletRequest requestWrapper = request;
-        logger.debug("pre id_token disable:{} pathinfo:{} request_uri:{} response_type:{}",isIdTokenDisabled(),
-            UaaStringUtils.getCleanedUserControlString(requestWrapper.getPathInfo()),
-            UaaStringUtils.getCleanedUserControlString(request.getRequestURI()),
-            UaaStringUtils.getCleanedUserControlString(requestWrapper.getParameter(RESPONSE_TYPE)));
+        logger.debug("pre id_token disable:{} pathinfo:{} request_uri:{} response_type:{}", isIdTokenDisabled(),
+                UaaStringUtils.getCleanedUserControlString(requestWrapper.getPathInfo()),
+                UaaStringUtils.getCleanedUserControlString(request.getRequestURI()),
+                UaaStringUtils.getCleanedUserControlString(requestWrapper.getParameter(RESPONSE_TYPE)));
         if (isIdTokenDisabled() && (applyPath(request.getPathInfo()) || applyPath(request.getRequestURI()))) {
             requestWrapper = new RemoveIdTokenParameterValueWrapper(request);
         }
-        logger.debug("post id_token disable:{} pathinfo:{} request_uri:{} response_type:{}",isIdTokenDisabled(),
-            UaaStringUtils.getCleanedUserControlString(requestWrapper.getPathInfo()),
-            UaaStringUtils.getCleanedUserControlString(request.getRequestURI()),
-            UaaStringUtils.getCleanedUserControlString(requestWrapper.getParameter(RESPONSE_TYPE)));
+        logger.debug("post id_token disable:{} pathinfo:{} request_uri:{} response_type:{}", isIdTokenDisabled(),
+                UaaStringUtils.getCleanedUserControlString(requestWrapper.getPathInfo()),
+                UaaStringUtils.getCleanedUserControlString(request.getRequestURI()),
+                UaaStringUtils.getCleanedUserControlString(requestWrapper.getParameter(RESPONSE_TYPE)));
         filterChain.doFilter(requestWrapper, response);
     }
 
@@ -123,7 +123,7 @@ public class DisableIdTokenResponseTypeFilter extends OncePerRequestFilter {
         public String[] getParameterValues(String name) {
             String[] values = super.getParameterValues(name);
             if (RESPONSE_TYPE.equals(name)) {
-                for (int i=0; values!=null && i<values.length; i++) {
+                for (int i = 0; values != null && i < values.length; i++) {
                     values[i] = removeIdTokenValue(values[i]);
                 }
             }

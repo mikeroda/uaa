@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ * *****************************************************************************
  *     Cloud Foundry
  *     Copyright (c) [2009-2016] Pivotal Software, Inc. All Rights Reserved.
  *
@@ -12,21 +13,6 @@
  *******************************************************************************/
 
 package org.cloudfoundry.identity.uaa.scim.endpoints;
-
-import static java.util.Collections.singletonList;
-import static java.util.UUID.randomUUID;
-import static java.util.stream.Collectors.toList;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
-import static org.assertj.core.api.Assertions.assertThatNoException;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.when;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
 
 import org.cloudfoundry.identity.uaa.resources.SearchResults;
 import org.cloudfoundry.identity.uaa.scim.ScimUser;
@@ -44,6 +30,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.authority.AuthorityUtils;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
+import static java.util.Collections.singletonList;
+import static java.util.UUID.randomUUID;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
 /**
  * @author Dave Syer
@@ -68,7 +68,7 @@ class UserIdConversionEndpointsTests {
 
     @SuppressWarnings("unchecked")
     @BeforeEach
-    public void init() {
+    void init() {
         endpoints = new UserIdConversionEndpoints(mockSecurityContextAccessor, scimUserEndpoints, scimUserProvisioning, identityZoneManager, true);
         lenient().when(mockSecurityContextAccessor.getAuthorities()).thenReturn(authorities);
         lenient().when(mockSecurityContextAccessor.getAuthenticationInfo()).thenReturn("mock object");
@@ -76,21 +76,21 @@ class UserIdConversionEndpointsTests {
     }
 
     @Test
-    void testHappyDay() {
+    void happyDay() {
         arrangeCurrentIdentityZone("uaa");
         assertThatNoException()
                 .isThrownBy(() -> endpoints.findUsers("userName eq \"marissa\"", "ascending", 0, 100, false));
     }
 
     @Test
-    void testSanitizeExceptionInFilter() {
+    void sanitizeExceptionInFilter() {
         assertThatExceptionOfType(ScimException.class)
                 .isThrownBy(() -> endpoints.findUsers("<svg onload=alert(document.domain)>", "ascending", 0, 100, false))
                 .withMessage("Invalid filter '&lt;svg onload=alert(document.domain)&gt;'");
     }
 
     @Test
-    void testGoodFilter_IncludeInactive() {
+    void goodFilterIncludeInactive() {
         final String idzId = randomUUID().toString();
         arrangeCurrentIdentityZone(idzId);
 
@@ -117,7 +117,7 @@ class UserIdConversionEndpointsTests {
     }
 
     @Test
-    void testGoodFilter_OnlyActive() {
+    void goodFilterOnlyActive() {
         final String idzId = randomUUID().toString();
         arrangeCurrentIdentityZone(idzId);
 
@@ -144,7 +144,7 @@ class UserIdConversionEndpointsTests {
             "(id eq \"foo\" and username eq \"bar\") or id eq \"bar\"",
             "id eq \"bar\" and (id eq \"foo\" and username eq \"bar\")"
     })
-    void testGoodFilter(final String filter) {
+    void goodFilter(final String filter) {
         arrangeCurrentIdentityZone("uaa");
         final ResponseEntity<Object> response = endpoints.findUsers(
                 filter,
@@ -163,7 +163,7 @@ class UserIdConversionEndpointsTests {
             "id pr",
             "id eq \"foo\" or origin co \"uaa\""
     })
-    void testBadFilter_WildcardsNotAllowed(final String filter) {
+    void badFilterWildcardsNotAllowed(final String filter) {
         assertThatExceptionOfType(ScimException.class)
                 .isThrownBy(() -> endpoints.findUsers(filter, "ascending", 0, 100, false))
                 .withMessage("Wildcards are not allowed in filter.");
@@ -175,7 +175,7 @@ class UserIdConversionEndpointsTests {
             "id le \"foo\"",
             "id lt \"foo\""
     })
-    void testBadFilter_UnsupportedOperator(final String filter) {
+    void badFilterUnsupportedOperator(final String filter) {
         assertThatExceptionOfType(ScimException.class)
                 .isThrownBy(() -> endpoints.findUsers(filter, "ascending", 0, 100, false))
                 .withMessage("Invalid operator.");
@@ -185,7 +185,7 @@ class UserIdConversionEndpointsTests {
     @ValueSource(strings = {
             "id sq \"foo\""
     })
-    void testBadFilter_UnrecognizedOperator(final String filter) {
+    void badFilterUnrecognizedOperator(final String filter) {
         assertThatExceptionOfType(ScimException.class)
                 .isThrownBy(() -> endpoints.findUsers(filter, "ascending", 0, 100, false))
                 .withMessageStartingWith("Invalid filter '");
@@ -198,14 +198,14 @@ class UserIdConversionEndpointsTests {
             "origin eq \"uaa\" or origin eq \"bar\"",
             "groups.display eq \"foo\""
     })
-    void testBadFilter_DoesNotContainClauseWithIdOrUserName(final String filter) {
+    void badFilterDoesNotContainClauseWithIdOrUserName(final String filter) {
         assertThatExceptionOfType(ScimException.class)
                 .isThrownBy(() -> endpoints.findUsers(filter, "ascending", 0, 100, false))
                 .withMessage("Invalid filter attribute.");
     }
 
     @Test
-    void testDisabled() {
+    void disabled() {
         endpoints = new UserIdConversionEndpoints(mockSecurityContextAccessor, scimUserEndpoints, scimUserProvisioning, identityZoneManager, false);
         ResponseEntity<Object> response = endpoints.findUsers("id eq \"foo\"", "ascending", 0, 100, false);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -247,7 +247,7 @@ class UserIdConversionEndpointsTests {
         final boolean lastPageIncomplete = expectedUsers.size() % resultsPerPage != 0;
         final int expectedPages = expectedUsers.size() / resultsPerPage + (lastPageIncomplete ? 1 : 0);
 
-        final Function<Integer, SearchResults<Map<String, Object>>> fetchNextPage = (startIndex) -> {
+        final Function<Integer, SearchResults<Map<String, Object>>> fetchNextPage = startIndex -> {
             final ResponseEntity<Object> response = endpoints.findUsers(
                     filter, "ascending", startIndex, resultsPerPage, includeInactive
             );
@@ -278,7 +278,7 @@ class UserIdConversionEndpointsTests {
         }
 
         // check next page -> should be empty
-        final SearchResults<Map<String, Object>> responseBody = fetchNextPage.apply(currentStartIndex);;
+        final SearchResults<Map<String, Object>> responseBody = fetchNextPage.apply(currentStartIndex);
         assertThat(responseBody.getTotalResults()).isEqualTo(expectedUsers.size());
         assertThat(responseBody.getResources()).isNotNull().isEmpty();
 
@@ -286,7 +286,7 @@ class UserIdConversionEndpointsTests {
                 "id", (Object) scimUser.getId(),
                 "userName", scimUser.getUserName(),
                 "origin", scimUser.getOrigin()
-        )).collect(toList());
+        )).toList();
 
         assertThat(observedUsers).hasSameElementsAs(expectedResponse);
     }

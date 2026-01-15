@@ -1,25 +1,21 @@
 package org.cloudfoundry.identity.uaa.health;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.hamcrest.Matchers.lessThanOrEqualTo;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-import javax.sql.DataSource;
-
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletResponse;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class HealthzEndpointTests {
 
@@ -49,21 +45,23 @@ class HealthzEndpointTests {
     }
 
     @Test
-    void getHealthz() {
-        assertEquals("UAA running. Database status unknown.\n", endpoint.getHealthz(response));
+    void getHealthz() throws SQLException {
+        when(dataSource.getConnection()).thenThrow(new SQLException("DB is Down"));
+        assertThat(endpoint.getHealthz(response)).isEqualTo("UAA running. Database failed to start.\n");
     }
 
     @Test
     void getHealthz_connectionSuccess() {
         endpoint.isDataSourceConnectionAvailable();
-        assertEquals("ok\n", endpoint.getHealthz(response));
+        assertThat(endpoint.getHealthz(response)).isEqualTo("ok\n");
     }
+
     @Test
     void getHealthz_connectionFailed() throws SQLException {
         when(statement.execute(anyString())).thenThrow(new SQLException());
         endpoint.isDataSourceConnectionAvailable();
-        assertEquals("Database Connection failed.\n", endpoint.getHealthz(response));
-        assertEquals(503, response.getStatus());
+        assertThat(endpoint.getHealthz(response)).isEqualTo("Database Connection failed.\n");
+        assertThat(response.getStatus()).isEqualTo(503);
     }
 
     @Test
@@ -71,10 +69,10 @@ class HealthzEndpointTests {
         long now = System.currentTimeMillis();
         shutdownHook.start();
         shutdownHook.join();
-        assertEquals("stopping\n", endpoint.getHealthz(response));
-        assertEquals(503, response.getStatus());
+        assertThat(endpoint.getHealthz(response)).isEqualTo("stopping\n");
+        assertThat(response.getStatus()).isEqualTo(503);
         long after = System.currentTimeMillis();
-        assertThat(after, greaterThanOrEqualTo(now + SLEEP_UPON_SHUTDOWN));
+        assertThat(after).isGreaterThanOrEqualTo(now + SLEEP_UPON_SHUTDOWN);
     }
 
     @Nested
@@ -96,10 +94,10 @@ class HealthzEndpointTests {
             long now = System.currentTimeMillis();
             shutdownHook.start();
             shutdownHook.join();
-            assertEquals("stopping\n", endpoint.getHealthz(response));
-            assertEquals(503, response.getStatus());
+            assertThat(endpoint.getHealthz(response)).isEqualTo("stopping\n");
+            assertThat(response.getStatus()).isEqualTo(503);
             long after = System.currentTimeMillis();
-            assertThat(after, lessThanOrEqualTo(now + SLEEP_UPON_SHUTDOWN));
+            assertThat(after).isLessThanOrEqualTo(now + SLEEP_UPON_SHUTDOWN);
         }
     }
 }

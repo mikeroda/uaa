@@ -24,19 +24,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.security.crypto.codec.Base64;
 
 import java.io.File;
 
-import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.getLimitedModeStatusFile;
+import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.resetLimitedModeStatusFile;
+import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.setLimitedModeStatusFile;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.junit.Assert.assertTrue;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-public class LimitedModeTokenMockMvcTests extends TokenMvcMockTests {
+class LimitedModeTokenMockMvcTests extends TokenMvcMockTests {
 
     private File existingStatusFile;
 
@@ -50,7 +53,7 @@ public class LimitedModeTokenMockMvcTests extends TokenMvcMockTests {
         existingStatusFile = getLimitedModeStatusFile(webApplicationContext);
         setLimitedModeStatusFile(webApplicationContext);
 
-        assertTrue(isLimitedMode());
+        assertThat(isLimitedMode()).isTrue();
     }
 
     @AfterEach
@@ -61,24 +64,28 @@ public class LimitedModeTokenMockMvcTests extends TokenMvcMockTests {
     @Test
     void check_token_while_limited() throws Exception {
         UaaClientDetails client = setUpClients(generator.generate().toLowerCase(),
-                                                "uaa.resource,clients.read",
-                                                "",
-                                                "client_credentials",
-                                                true);
+                "uaa.resource,clients.read",
+                "",
+                "client_credentials",
+                true);
         String token = MockMvcUtils.getClientCredentialsOAuthAccessToken(mockMvc, client.getClientId(), SECRET, null, null, true);
         mockMvc.perform(
-            post("/check_token")
-                .param("token", token)
-                .header(AUTHORIZATION,
-                        "Basic " + new String(Base64.encode((client.getClientId() + ":" + SECRET).getBytes())))
-        )
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.scope").value(containsInAnyOrder("clients.read", "uaa.resource")))
-            .andExpect(jsonPath("$.client_id").value(client.getClientId()))
-            .andExpect(jsonPath("$.jti").value(token));
+                        post("/check_token")
+                                .param("token", token)
+                                .header(AUTHORIZATION,
+                                        "Basic " + new String(Base64.encode((client.getClientId() + ":" + SECRET).getBytes())))
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scope").value(containsInAnyOrder("clients.read", "uaa.resource")))
+                .andExpect(jsonPath("$.client_id").value(client.getClientId()))
+                .andExpect(jsonPath("$.jti").value(token));
     }
 
     private boolean isLimitedMode() {
-        return webApplicationContext.getBean(LimitedModeUaaFilter.class).isEnabled();
+        FilterRegistrationBean<LimitedModeUaaFilter> bean =
+                    (FilterRegistrationBean<LimitedModeUaaFilter>)
+                            webApplicationContext.getBean("limitedModeUaaFilter", FilterRegistrationBean.class);
+        LimitedModeUaaFilter filter = bean.getFilter();
+        return filter.isEnabled();
     }
 }

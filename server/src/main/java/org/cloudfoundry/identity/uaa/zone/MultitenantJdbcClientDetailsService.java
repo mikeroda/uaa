@@ -6,6 +6,9 @@ import org.cloudfoundry.identity.uaa.client.InvalidClientDetailsException;
 import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.client.ClientJwtConfiguration;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
+import org.cloudfoundry.identity.uaa.oauth.client.ClientJwtCredential;
+import org.cloudfoundry.identity.uaa.oauth.common.util.DefaultJdbcListFactory;
+import org.cloudfoundry.identity.uaa.oauth.common.util.JdbcListFactory;
 import org.cloudfoundry.identity.uaa.provider.ClientAlreadyExistsException;
 import org.cloudfoundry.identity.uaa.provider.NoSuchClientException;
 import org.cloudfoundry.identity.uaa.resources.ResourceMonitor;
@@ -25,10 +28,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.common.exceptions.InvalidClientException;
-import org.springframework.security.oauth2.common.util.DefaultJdbcListFactory;
-import org.springframework.security.oauth2.common.util.JdbcListFactory;
-import org.springframework.security.oauth2.provider.ClientDetails;
+import org.cloudfoundry.identity.uaa.oauth.common.exceptions.InvalidClientException;
+import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -116,13 +117,13 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
     private JdbcListFactory listFactory;
 
     public MultitenantJdbcClientDetailsService(
-            final JdbcTemplate jdbcTemplate,
+            final NamedParameterJdbcTemplate jdbcTemplate,
             final IdentityZoneManager identityZoneManager,
             final @Qualifier("cachingPasswordEncoder") PasswordEncoder passwordEncoder) {
         super(identityZoneManager);
         Assert.notNull(jdbcTemplate, "JDbcTemplate required");
-        this.jdbcTemplate = jdbcTemplate;
-        this.listFactory = new DefaultJdbcListFactory(new NamedParameterJdbcTemplate(jdbcTemplate));
+        this.jdbcTemplate = jdbcTemplate.getJdbcTemplate();
+        this.listFactory = new DefaultJdbcListFactory(jdbcTemplate);
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -192,7 +193,7 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
                 clientDetails.getClientSecret() != null ?
                         passwordEncoder.encode(clientDetails.getClientSecret()) :
                         null;
-        clientDetailFieldsForUpdate[1] = (clientDetails instanceof UaaClientDetails) ? ((UaaClientDetails) clientDetails).getClientJwtConfig() : null;
+        clientDetailFieldsForUpdate[1] = clientDetails instanceof UaaClientDetails ucd ? ucd.getClientJwtConfig() : null;
         clientDetailFieldsForUpdate[clientDetailFieldsForUpdate.length - 1] = getUserId();
         return clientDetailFieldsForUpdate;
     }
@@ -207,7 +208,7 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
 
             json = JsonUtils.writeValueAsString(additionalInformation);
         } catch (Exception e) {
-            logger.warn("Could not serialize additional information: " + clientDetails, e);
+            logger.warn("Could not serialize additional information: {}", clientDetails, e);
             throw new InvalidDataAccessResourceUsageException("Could not serialize additional information:" + clientDetails.getClientId(), e);
         }
 
@@ -307,9 +308,21 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
     }
 
     @Override
+    public void addClientJwtCredential(String clientId, ClientJwtCredential keyConfig, String zoneId, boolean overwrite)
+            throws NoSuchClientException {
+        UaaClientDetails uaaUaaClientDetails = (UaaClientDetails) loadClientByClientId(clientId, zoneId);
+        ClientJwtConfiguration existingConfig = uaaUaaClientDetails != null ? ClientJwtConfiguration.readValue(uaaUaaClientDetails) : null;
+        ClientJwtConfiguration clientJwtConfiguration = new ClientJwtConfiguration(List.of(keyConfig));
+        ClientJwtConfiguration result = ClientJwtConfiguration.merge(existingConfig, clientJwtConfiguration, overwrite);
+        if (result != null) {
+            updateClientJwtConfig(clientId, JsonUtils.writeValueAsString(result), zoneId);
+        }
+    }
+
+    @Override
     public void deleteClientJwtConfig(String clientId, String keyConfig, String zoneId) throws NoSuchClientException {
         ClientJwtConfiguration clientJwtConfiguration;
-        if(UaaUrlUtils.isUrl(keyConfig)) {
+        if (UaaUrlUtils.isUrl(keyConfig)) {
             clientJwtConfiguration = ClientJwtConfiguration.parse(keyConfig);
         } else {
             clientJwtConfiguration = new ClientJwtConfiguration(keyConfig, null);
@@ -321,6 +334,15 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
         } else {
             throw new InvalidClientDetailsException("Invalid jwt configuration configuration");
         }
+    }
+
+    @Override
+    public void deleteClientJwtCredential(String clientId, ClientJwtCredential keyConfig, String zoneId) throws NoSuchClientException {
+        UaaClientDetails uaaUaaClientDetails = (UaaClientDetails) loadClientByClientId(clientId, zoneId);
+        ClientJwtConfiguration existingConfig = uaaUaaClientDetails != null ? ClientJwtConfiguration.readValue(uaaUaaClientDetails) : null;
+        ClientJwtConfiguration clientJwtConfiguration = new ClientJwtConfiguration(List.of(keyConfig));
+        ClientJwtConfiguration result = ClientJwtConfiguration.delete(existingConfig, clientJwtConfiguration);
+        updateClientJwtConfig(clientId, result != null ? JsonUtils.writeValueAsString(result) : null, zoneId);
     }
 
     /**
@@ -359,7 +381,7 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
                     Object autoApprovedFromAddInfo = additionalInformation.remove(ClientConstants.AUTO_APPROVE);
                     details.setAdditionalInformation(additionalInformation);
                     if (autoApprovedFromAddInfo != null) {
-                        if ((autoApprovedFromAddInfo instanceof Boolean && (Boolean) autoApprovedFromAddInfo || "true".equals(autoApprovedFromAddInfo))) {
+                        if (autoApprovedFromAddInfo instanceof Boolean boolean1 && boolean1 || "true".equals(autoApprovedFromAddInfo)) {
                             autoApproveScopes.add("true");
                         } else if (autoApprovedFromAddInfo instanceof Collection<?>) {
                             @SuppressWarnings("unchecked")
@@ -369,7 +391,7 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
                     }
 
                 } catch (Exception e) {
-                    logger.warn("Could not decode JSON for additional information: " + details, e);
+                    logger.warn("Could not decode JSON for additional information: {}", details, e);
                 }
             }
 
@@ -407,7 +429,9 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         //Bootstrap will not have authenticated session
-        if (authentication == null) return null;
+        if (authentication == null) {
+            return null;
+        }
         if (authentication.getPrincipal() instanceof UaaPrincipal) {
             userId = ((UaaPrincipal) authentication.getPrincipal()).getId();
         } else if (authentication.getPrincipal() instanceof String) {
@@ -418,6 +442,6 @@ public class MultitenantJdbcClientDetailsService extends MultitenantClientServic
     }
 
     String getCreatedByForClientAndZone(String clientId, String zoneId) {
-        return jdbcTemplate.queryForObject(GET_CREATED_BY_SQL, new Object[]{clientId, zoneId}, String.class);
+        return jdbcTemplate.queryForObject(GET_CREATED_BY_SQL, String.class, new Object[]{clientId, zoneId});
     }
 }

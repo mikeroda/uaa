@@ -67,7 +67,7 @@ public class Claims {
     @JsonProperty(ClaimConstants.GRANT_TYPE)
     private String grantType;
     @JsonProperty(ClaimConstants.ADDITIONAL_AZ_ATTR)
-    private Map<String,String> azAttr;
+    private Map<String, String> azAttr;
     @JsonProperty(ClaimConstants.AZP)
     private String azp;
     @JsonProperty(ClaimConstants.AUTH_TIME)
@@ -89,13 +89,15 @@ public class Claims {
     @JsonProperty(ClaimConstants.REVOCABLE)
     private boolean revocable;
     @JsonProperty(ClaimConstants.EXTERNAL_ATTR)
-    private Map<String,String> extAttr;
+    private Map<String, String> extAttr;
     @JsonProperty(ClaimConstants.PREVIOUS_LOGON_TIME)
     private Long previousLogonTime;
     @JsonProperty(ClaimConstants.AMR)
     private String[] amr;
     @JsonProperty(ClaimConstants.CLIENT_AUTH_METHOD)
     private String clientAuth;
+    @JsonProperty(ClaimConstants.ACT)
+    private Map<String, Object> actorClaims;
 
     public String getUserId() {
         return userId;
@@ -193,7 +195,9 @@ public class Claims {
         this.jti = jti;
     }
 
-    public List<String> getAud() { return aud; }
+    public List<String> getAud() {
+        return aud;
+    }
 
     public void setAud(List<String> aud) {
         this.aud = aud;
@@ -239,11 +243,11 @@ public class Claims {
         this.grantType = grantType;
     }
 
-    public Map<String,String> getAzAttr() {
+    public Map<String, String> getAzAttr() {
         return azAttr;
     }
 
-    public void setAzAttr(Map<String,String> azAttr) {
+    public void setAzAttr(Map<String, String> azAttr) {
         this.azAttr = azAttr;
     }
 
@@ -327,11 +331,11 @@ public class Claims {
         this.revocable = revocable;
     }
 
-    public Map<String,String> getExtAttr() {
+    public Map<String, String> getExtAttr() {
         return extAttr;
     }
 
-    public void setExtAttr(Map<String,String> extAttr) {
+    public void setExtAttr(Map<String, String> extAttr) {
         this.extAttr = extAttr;
     }
 
@@ -365,6 +369,10 @@ public class Claims {
 
     public void setClientAuth(final String clientAuth) {
         this.clientAuth = clientAuth;
+    }
+
+    public Map<String, Object> getActorClaims() {
+        return this.actorClaims;
     }
 
     @JsonIgnore

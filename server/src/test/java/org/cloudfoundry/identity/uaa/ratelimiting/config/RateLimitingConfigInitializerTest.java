@@ -1,5 +1,14 @@
 package org.cloudfoundry.identity.uaa.ratelimiting.config;
 
+import org.cloudfoundry.identity.uaa.ratelimiting.core.config.exception.RateLimitingConfigException;
+import org.cloudfoundry.identity.uaa.ratelimiting.core.http.CredentialIdType;
+import org.cloudfoundry.identity.uaa.ratelimiting.internal.RateLimiterStatus;
+import org.cloudfoundry.identity.uaa.ratelimiting.internal.common.LimiterFactorySupplierUpdatable;
+import org.cloudfoundry.identity.uaa.ratelimiting.internal.common.RateLimitingFactoriesSupplierWithStatus;
+import org.cloudfoundry.identity.uaa.ratelimiting.internal.limitertracking.LimiterManagerImpl;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -7,22 +16,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import org.cloudfoundry.identity.uaa.ratelimiting.core.config.exception.RateLimitingConfigException;
-import org.cloudfoundry.identity.uaa.ratelimiting.core.http.CredentialIdType;
-import org.cloudfoundry.identity.uaa.ratelimiting.internal.RateLimiterStatus;
-import org.cloudfoundry.identity.uaa.ratelimiting.internal.common.LimiterFactorySupplierUpdatable;
-import org.cloudfoundry.identity.uaa.ratelimiting.internal.common.RateLimitingFactoriesSupplierWithStatus;
-import org.cloudfoundry.identity.uaa.ratelimiting.internal.limitertracking.LimiterManagerImpl;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-
 class RateLimitingConfigInitializerTest {
 
     @Test
     void noRateLimit() {
         //Check rateLImiting false does not require any parameters
         RateLimitingConfigInitializer rateLimitingConfigInitializer = new RateLimitingConfigInitializer(false, null, null, null);
-        Assertions.assertNotNull(rateLimitingConfigInitializer);
+        assertThat(rateLimitingConfigInitializer).isNotNull();
     }
 
     @Test

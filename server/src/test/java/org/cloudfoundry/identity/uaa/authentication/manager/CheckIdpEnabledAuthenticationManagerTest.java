@@ -19,9 +19,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.sql.SQLException;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -54,8 +53,8 @@ class CheckIdpEnabledAuthenticationManagerTest {
     @Test
     void authenticate() {
         Authentication auth = manager.authenticate(token);
-        assertNotNull(auth);
-        assertTrue(auth.isAuthenticated());
+        assertThat(auth).isNotNull();
+        assertThat(auth.isAuthenticated()).isTrue();
     }
 
     @Test
@@ -63,7 +62,7 @@ class CheckIdpEnabledAuthenticationManagerTest {
         IdentityProvider provider = identityProviderProvisioning.retrieveByOrigin(OriginKeys.UAA, IdentityZoneHolder.get().getId());
         provider.setActive(false);
         identityProviderProvisioning.update(provider, IdentityZoneHolder.get().getId());
-        assertThrows(ProviderNotFoundException.class, () -> manager.authenticate(token));
+        assertThatExceptionOfType(ProviderNotFoundException.class).isThrownBy(() -> manager.authenticate(token));
     }
 
 }

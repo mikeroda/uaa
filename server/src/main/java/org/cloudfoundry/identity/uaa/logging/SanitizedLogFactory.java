@@ -1,17 +1,18 @@
 package org.cloudfoundry.identity.uaa.logging;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Returns Log instance that replaces \n, \r, \t with a | to prevent log forging.
  */
-public class SanitizedLogFactory {
+public final class SanitizedLogFactory {
 
-    private SanitizedLogFactory() { }
+    private SanitizedLogFactory() {
+    }
 
     public static SanitizedLog getLog(Class<?> clazz) {
-        return new SanitizedLog(LogManager.getLogger(clazz));
+        return new SanitizedLog(LoggerFactory.getLogger(clazz));
     }
 
     public static class SanitizedLog {
@@ -52,6 +53,12 @@ public class SanitizedLogFactory {
         public void debug(String message) {
             if (fallback.isDebugEnabled()) {
                 fallback.debug(LogSanitizerUtil.sanitize(message));
+            }
+        }
+
+        public void debug(String message, Object... params) {
+            if (fallback.isDebugEnabled()) {
+                fallback.debug(LogSanitizerUtil.sanitize(message), params);
             }
         }
 

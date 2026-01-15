@@ -14,19 +14,20 @@ import java.sql.Timestamp;
 import java.util.EnumSet;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.cloudfoundry.identity.uaa.audit.AuditEventType.ClientAuthenticationFailure;
 import static org.cloudfoundry.identity.uaa.audit.AuditEventType.PasswordChangeSuccess;
 import static org.cloudfoundry.identity.uaa.audit.AuditEventType.UserAccountUnlockedEvent;
 import static org.cloudfoundry.identity.uaa.audit.AuditEventType.UserAuthenticationFailure;
 import static org.cloudfoundry.identity.uaa.audit.AuditEventType.UserAuthenticationSuccess;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.collection.IsCollectionWithSize.hasSize;
-import static org.hamcrest.collection.IsEmptyCollection.empty;
-import static org.hamcrest.core.Is.is;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @WithDatabaseContext
 class JdbcUnsuccessfulLoginCountingAuditServiceTests {
@@ -56,10 +57,10 @@ class JdbcUnsuccessfulLoginCountingAuditServiceTests {
         Thread.sleep(100);
         auditService.log(getAuditEvent(UserAuthenticationFailure, "1", "joe"), getAuditEvent(UserAuthenticationFailure, "1", "joe").getIdentityZoneId());
         List<AuditEvent> events = auditService.find("1", 0, IdentityZone.getUaaZoneId());
-        assertEquals(2, events.size());
-        assertEquals("1", events.get(0).getPrincipalId());
-        assertEquals("joe", events.get(0).getData());
-        assertEquals("1.1.1.1", events.get(0).getOrigin());
+        assertThat(events).hasSize(2);
+        assertThat(events.getFirst().getPrincipalId()).isEqualTo("1");
+        assertThat(events.getFirst().getData()).isEqualTo("joe");
+        assertThat(events.getFirst().getOrigin()).isEqualTo("1.1.1.1");
     }
 
     @Test
@@ -67,12 +68,12 @@ class JdbcUnsuccessfulLoginCountingAuditServiceTests {
         long now = System.currentTimeMillis();
         when(mockTimeService.getCurrentTimeMillis()).thenReturn(now);
         auditService.log(getAuditEvent(UserAuthenticationFailure, "1", "joe"), getAuditEvent(UserAuthenticationFailure, "1", "joe").getIdentityZoneId());
-        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class), is(1));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class)).isOne();
         ReflectionTestUtils.invokeMethod(ReflectionTestUtils.getField(auditService, "lastDelete"), "set", 0l);
         // Set the created column to 25 hours past
         jdbcTemplate.update("update sec_audit set created=?", new Timestamp(now - 25 * 3600 * 1000));
         auditService.log(getAuditEvent(UserAuthenticationFailure, "1", "joe"), getAuditEvent(UserAuthenticationFailure, "1", "joe").getIdentityZoneId());
-        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class), is(1));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class)).isOne();
     }
 
     @Test
@@ -80,14 +81,14 @@ class JdbcUnsuccessfulLoginCountingAuditServiceTests {
         long now = System.currentTimeMillis();
         when(mockTimeService.getCurrentTimeMillis()).thenReturn(now);
         auditService.log(getAuditEvent(UserAuthenticationFailure, "1", "joe"), getAuditEvent(UserAuthenticationFailure, "1", "joe").getIdentityZoneId());
-        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class), is(1));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class)).isOne();
         // Set the created column to 25 hours past
         jdbcTemplate.update("update sec_audit set created=?", new Timestamp(now - 25 * 3600 * 1000));
         int count = 5;
         for (int i = 0; i < count; i++) {
             auditService.log(getAuditEvent(UserAuthenticationFailure, "1", "joe"), getAuditEvent(UserAuthenticationFailure, "1", "joe").getIdentityZoneId());
         }
-        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class), is(count + 1));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class)).isEqualTo(count + 1);
         ArgumentCaptor<String> queries = ArgumentCaptor.forClass(String.class);
         verify(template, times(1)).update(queries.capture(), any(Timestamp.class));
     }
@@ -112,17 +113,17 @@ class JdbcUnsuccessfulLoginCountingAuditServiceTests {
     @Test
     void userAuthenticationSuccessResetsData() {
         auditService.log(getAuditEvent(UserAuthenticationFailure, "1", "joe"), getAuditEvent(UserAuthenticationFailure, "1", "joe").getIdentityZoneId());
-        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class), is(1));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class)).isOne();
         auditService.log(getAuditEvent(UserAuthenticationSuccess, "1", "joe"), getAuditEvent(UserAuthenticationSuccess, "1", "joe").getIdentityZoneId());
-        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class), is(0));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class)).isZero();
     }
 
     @Test
     void userPasswordChangeSuccessResetsData() {
         auditService.log(getAuditEvent(UserAuthenticationFailure, "1", "joe"), getAuditEvent(UserAuthenticationFailure, "1", "joe").getIdentityZoneId());
-        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class), is(1));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class)).isOne();
         auditService.log(getAuditEvent(PasswordChangeSuccess, "1", "joe"), getAuditEvent(PasswordChangeSuccess, "1", "joe").getIdentityZoneId());
-        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class), is(0));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sec_audit where principal_id='1'", Integer.class)).isZero();
     }
 
     @Test
@@ -140,8 +141,8 @@ class JdbcUnsuccessfulLoginCountingAuditServiceTests {
         // Find events within last 2 mins
         List<AuditEvent> userEvents = auditService.find("1", now - 2 * 60 * 1000, IdentityZone.getUaaZoneId());
         List<AuditEvent> clientEvents = auditService.find("client", now - 2 * 60 * 1000, IdentityZone.getUaaZoneId());
-        assertEquals(1, userEvents.size());
-        assertEquals(0, clientEvents.size());
+        assertThat(userEvents).hasSize(1);
+        assertThat(clientEvents).isEmpty();
     }
 
     @Test
@@ -163,11 +164,10 @@ class JdbcUnsuccessfulLoginCountingAuditServiceTests {
         AuditEvent unlockEvent = new AuditEvent(UserAccountUnlockedEvent, "1", authDetails, "joe", System.currentTimeMillis(), IdentityZone.getUaaZoneId(), null, null);
         auditService.log(unlockEvent, unlockEvent.getIdentityZoneId());
 
-        assertThat(auditService.find("1", 0, loginFailureEvent.getIdentityZoneId()), is(empty()));
+        assertThat(auditService.find("1", 0, loginFailureEvent.getIdentityZoneId())).isEmpty();
     }
 
     private AuditEvent getAuditEvent(AuditEventType type, String principal, String data) {
         return new AuditEvent(type, principal, authDetails, data, System.currentTimeMillis(), IdentityZone.getUaaZoneId(), null, null);
     }
-
 }

@@ -12,11 +12,11 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 import static org.springframework.http.HttpHeaders.SET_COOKIE;
@@ -26,9 +26,9 @@ public class CurrentUserCookieRequestFilter extends OncePerRequestFilter {
 
     public static final String CURRENT_USER_COOKIE_ERROR = "current_user_cookie_error";
     private final Rfc6265CookieProcessor rfc6265CookieProcessor;
-    private Logger logger = LoggerFactory.getLogger(CurrentUserCookieRequestFilter.class);
+    private final Logger logger = LoggerFactory.getLogger(CurrentUserCookieRequestFilter.class);
 
-    private CurrentUserCookieFactory currentUserCookieFactory;
+    private final CurrentUserCookieFactory currentUserCookieFactory;
 
     public CurrentUserCookieRequestFilter(CurrentUserCookieFactory currentUserCookieFactory) {
         this.currentUserCookieFactory = currentUserCookieFactory;
@@ -43,7 +43,7 @@ public class CurrentUserCookieRequestFilter extends OncePerRequestFilter {
             UaaPrincipal principal = (UaaPrincipal) getContext().getAuthentication().getPrincipal();
             try {
                 Cookie currentUserCookie = currentUserCookieFactory.getCookie(principal);
-                String headerValue = rfc6265CookieProcessor.generateHeader(currentUserCookie);
+                String headerValue = rfc6265CookieProcessor.generateHeader(currentUserCookie, request);
                 response.addHeader(SET_COOKIE, headerValue);
             } catch (CurrentUserCookieFactory.CurrentUserCookieEncodingException e) {
                 logger.error(errorMessage(principal), e);
@@ -59,7 +59,7 @@ public class CurrentUserCookieRequestFilter extends OncePerRequestFilter {
     }
 
     private String errorMessage(UaaPrincipal principal) {
-        return String.format("There was a problem while creating the Current-User cookie for user id %s", principal.getId());
+        return "There was a problem while creating the Current-User cookie for user id %s".formatted(principal.getId());
     }
 
     private void handleError(HttpServletResponse response, UaaPrincipal principal) throws IOException {
@@ -74,7 +74,7 @@ public class CurrentUserCookieRequestFilter extends OncePerRequestFilter {
     private boolean isAuthenticated() {
         Authentication authentication = getContext().getAuthentication();
         return authentication != null &&
-                authentication instanceof UaaAuthentication &&
-                ((UaaAuthentication)authentication).isAuthenticated();
+                authentication instanceof UaaAuthentication ua &&
+                ua.isAuthenticated();
     }
 }

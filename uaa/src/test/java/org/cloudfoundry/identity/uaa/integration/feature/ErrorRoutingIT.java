@@ -1,14 +1,16 @@
 package org.cloudfoundry.identity.uaa.integration.feature;
 
 import org.apache.commons.io.IOUtils;
-import org.junit.*;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.xmlunit.assertj.XmlAssert;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,13 +18,14 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-@RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration(classes = DefaultIntegrationTestConfig.class)
-public class ErrorRoutingIT {
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringJUnitConfig(classes = DefaultIntegrationTestConfig.class)
+class ErrorRoutingIT {
 
     @Autowired
-    @Rule
-    public IntegrationTestRule integrationTestRule;
+    @RegisterExtension
+    private IntegrationTestExtension integrationTestExtension;
 
     @Autowired
     WebDriver webDriver;
@@ -31,47 +34,65 @@ public class ErrorRoutingIT {
     String baseUrl;
 
     @Test
-    public void testMethodNotAllowedRoutedToErrorPage() {
+    void methodNotAllowedRoutedToErrorPage() {
         webDriver.get(baseUrl + "/authenticate");
 
-        Assert.assertTrue("Check if on the error page", webDriver.findElement(By.tagName("h2")).getText().contains("Uh oh."));
-        Assert.assertTrue("Check if on the error page", webDriver.findElement(By.tagName("h2")).getText().contains("Something went amiss."));
+        assertThat(webDriver.findElement(By.tagName("h2")).getText()).as("Check if on the error page").contains("Uh oh.")
+                .as("Check if on the error page").contains("Something went amiss.");
     }
 
     @Test
-    public void testStatusCodeToErrorPage() throws IOException {
+    void statusCodeToErrorPage() throws IOException {
         CallErrorPageAndCheckHttpStatusCode("/error", "GET", 200);
         CallErrorPageAndCheckHttpStatusCode("/error404", "GET", 200);
         CallErrorPageAndCheckHttpStatusCode("/error429", "GET", 200);
         CallErrorPageAndCheckHttpStatusCode("/error500", "GET", 200);
         CallErrorPageAndCheckHttpStatusCode("/errorAny", "GET", 200);
-        CallErrorPageAndCheckHttpStatusCode("/rejected", "GET", 200);
+        CallErrorPageAndCheckHttpStatusCode("/rejected", "GET", 400);
         CallErrorPageAndCheckHttpStatusCode("/saml_error", "GET", 200);
         CallErrorPageAndCheckHttpStatusCode("/error", "GET", 200);
     }
 
     @Test
-    public void testResponseToErrorPage() throws IOException {
-        String body = CallErrorPageAndCheckHttpStatusCode("/info", "TRACE", 405);
-        Assert.assertEquals("Expected no response HTML body, but received: " + body, -1, body.indexOf("<html"));
+    void traceRequestsRejected() throws IOException {
+        // org.springframework.security.web.firewall.StrictHttpFirewall rejects TRACE method
+        HttpURLConnection cn = (HttpURLConnection) new URL(baseUrl + "/info").openConnection();
+        cn.setRequestMethod("TRACE");
+
+        cn.connect();
+        assertThat(cn.getResponseCode())
+                .as("Check status code from TRACE method is 405")
+                .isEqualTo(405);
     }
 
-    @Test
-    public void testRequestRejectedExceptionErrorPage() throws IOException {
-        final String rejectedEndpoint = "/login;endpoint=x"; // spring securiy throws RequestRejectedException and by default status 500, but now 400
-        webDriver.get(baseUrl + rejectedEndpoint);
+    @ParameterizedTest
+    @ValueSource(strings = { "/login?param=%00", "/login?param=val%00ue" } )
+    void requestInvalidParameterErrorPage(String invalidParameter) throws IOException {
+        String body = CallErrorPageAndCheckHttpStatusCode(invalidParameter, "GET", 400);
+        XmlAssert.assertThat(body)
+                .hasXPath("//p")
+                .extractingText()
+                .contains("The request contains an invalid parameter that can not be processed.");
+    }
 
-        Assert.assertTrue("Check if on the error page", webDriver.findElement(By.tagName("h2")).getText().contains("The request was rejected because it contained a potentially malicious character."));
-
-        CallErrorPageAndCheckHttpStatusCode(rejectedEndpoint, "GET", 400);
+    @ParameterizedTest
+    @ValueSource(strings = { "/login;endpoint=x", "/login;?endpoint=x", "/login?%00param=%00value" } )
+    void requestRejectedExceptionErrorPage(String rejectedEndpoint) throws IOException {
+        // spring security throws RequestRejectedException with status code 400
+        String body = CallErrorPageAndCheckHttpStatusCode(rejectedEndpoint, "GET", 400);
+        XmlAssert.assertThat(body)
+                .hasXPath("//h2")
+                .extractingText()
+                .contains("The request was rejected because it contained a potentially malicious character.");
     }
 
     private String CallErrorPageAndCheckHttpStatusCode(String errorPath, String method, int codeExpected) throws IOException {
-        HttpURLConnection cn = (HttpURLConnection)new URL(baseUrl + errorPath).openConnection();
+        HttpURLConnection cn = (HttpURLConnection) new URL(baseUrl + errorPath).openConnection();
         cn.setRequestMethod(method);
+        cn.setRequestProperty("Accept", "text/html");
         // connection initiate
         cn.connect();
-        Assert.assertEquals("Check status code from " + errorPath + " is " + codeExpected, cn.getResponseCode(), codeExpected);
+        assertThat(cn.getResponseCode()).as("Check status code from " + errorPath + " is " + codeExpected).isEqualTo(codeExpected);
         return getResponseBody(cn);
     }
 
@@ -83,12 +104,12 @@ public class ErrorRoutingIT {
             reader = new BufferedReader(new InputStreamReader((connection.getErrorStream())));
         }
 
-        StringBuffer sb = new StringBuffer();
-        int BUFFER=4096;
-        char[] buffer = new char[4096];
+        StringBuilder sb = new StringBuilder();
+        int bufferSize = 4096;
+        char[] buffer = new char[bufferSize];
         int charsRead = 0;
         try {
-            while ( (charsRead  = reader.read(buffer, 0, BUFFER)) != -1) {
+            while ((charsRead = reader.read(buffer, 0, bufferSize)) != -1) {
                 sb.append(buffer, 0, charsRead);
             }
         } catch (IOException ie) {

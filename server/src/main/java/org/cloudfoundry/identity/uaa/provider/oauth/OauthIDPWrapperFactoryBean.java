@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ * *****************************************************************************
  *     Cloud Foundry
  *     Copyright (c) [2009-2016] Pivotal Software, Inc. All Rights Reserved.
  *
@@ -12,6 +13,7 @@
  *******************************************************************************/
 package org.cloudfoundry.identity.uaa.provider.oauth;
 
+import org.cloudfoundry.identity.uaa.constants.ClientAuthentication;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.login.Prompt;
 import org.cloudfoundry.identity.uaa.provider.AbstractExternalOAuthIdentityProviderDefinition;
@@ -29,6 +31,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.cloudfoundry.identity.uaa.constants.OriginKeys.OAUTH20;
 import static org.cloudfoundry.identity.uaa.constants.OriginKeys.OIDC10;
@@ -38,7 +41,7 @@ import static org.springframework.util.StringUtils.hasText;
 
 public class OauthIDPWrapperFactoryBean {
     private Map<String, AbstractExternalOAuthIdentityProviderDefinition> oauthIdpDefinitions = new HashMap<>();
-    private List<IdentityProviderWrapper> providers = new LinkedList<>();
+    private final List<IdentityProviderWrapper> providers = new LinkedList<>();
 
     public OauthIDPWrapperFactoryBean(Map<String, Map> definitions) {
         if (definitions != null) {
@@ -48,15 +51,14 @@ public class OauthIDPWrapperFactoryBean {
                 try {
                     IdentityProvider provider = new IdentityProvider();
                     String type = (String) idpDefinitionMap.get("type");
-                    if(OAUTH20.equalsIgnoreCase(type)) {
+                    if (OAUTH20.equalsIgnoreCase(type)) {
                         RawExternalOAuthIdentityProviderDefinition oauthIdentityProviderDefinition = new RawExternalOAuthIdentityProviderDefinition();
                         oauthIdentityProviderDefinition.setCheckTokenUrl(idpDefinitionMap.get("checkTokenUrl") == null ? null : new URL((String) idpDefinitionMap.get("checkTokenUrl")));
                         setCommonProperties(idpDefinitionMap, oauthIdentityProviderDefinition);
                         oauthIdpDefinitions.put(alias, oauthIdentityProviderDefinition);
                         rawDef = oauthIdentityProviderDefinition;
                         provider.setType(OriginKeys.OAUTH20);
-                    }
-                    else if(OIDC10.equalsIgnoreCase(type)) {
+                    } else if (OIDC10.equalsIgnoreCase(type)) {
                         rawDef = getExternalOIDCIdentityProviderDefinition(alias, idpDefinitionMap, provider);
                     } else {
                         throw new IllegalArgumentException("Unknown type for provider. Type must be oauth2.0 or oidc1.0. (Was " + type + ")");
@@ -75,19 +77,26 @@ public class OauthIDPWrapperFactoryBean {
             }
 
 
-
         }
     }
 
+    /**
+     * Get IdP configuration map. The properties are documented either via
+     * https://docs.cloudfoundry.org/api/uaa/index.html#oauth-oidc -> create OAuth/OIDC Identity Provider
+     * or class
+     * #org.cloudfoundry.identity.uaa.mock.providers.IdentityProviderEndpointDocs
+     */
     private AbstractExternalOAuthIdentityProviderDefinition getExternalOIDCIdentityProviderDefinition(String alias,
-        Map<String, Object> idpDefinitionMap, IdentityProvider provider) throws MalformedURLException {
+            Map<String, Object> idpDefinitionMap, IdentityProvider provider) throws MalformedURLException {
         AbstractExternalOAuthIdentityProviderDefinition rawDef;
         OIDCIdentityProviderDefinition oidcIdentityProviderDefinition = new OIDCIdentityProviderDefinition();
         setCommonProperties(idpDefinitionMap, oidcIdentityProviderDefinition);
         oidcIdentityProviderDefinition.setUserInfoUrl(idpDefinitionMap.get("userInfoUrl") == null ? null : new URL((String) idpDefinitionMap.get("userInfoUrl")));
         oidcIdentityProviderDefinition.setPasswordGrantEnabled(
-            idpDefinitionMap.get("passwordGrantEnabled") == null ? false : (boolean) idpDefinitionMap.get("passwordGrantEnabled"));
-        oidcIdentityProviderDefinition.setSetForwardHeader(idpDefinitionMap.get("setForwardHeader") == null ? false : (boolean) idpDefinitionMap.get("passwordGrantEnabled"));
+                idpDefinitionMap.get("passwordGrantEnabled") == null ? false : (boolean) idpDefinitionMap.get("passwordGrantEnabled"));
+        oidcIdentityProviderDefinition.setSetForwardHeader(idpDefinitionMap.get("setForwardHeader") == null ? false : (boolean) idpDefinitionMap.get("setForwardHeader"));
+        oidcIdentityProviderDefinition.setTokenExchangeEnabled(Optional.ofNullable(idpDefinitionMap.get("tokenExchangeEnabled")).filter(Boolean.class::isInstance).map(Boolean.class::cast).orElse(false));
+        oidcIdentityProviderDefinition.setOmitIdTokenHintOnLogout(Optional.ofNullable(idpDefinitionMap.get("omitIdTokenHintOnLogout")).filter(Boolean.class::isInstance).map(Boolean.class::cast).orElse(null));
         oidcIdentityProviderDefinition.setPrompts((List<Prompt>) idpDefinitionMap.get("prompts"));
         setJwtClientAuthentication(idpDefinitionMap, oidcIdentityProviderDefinition);
         oauthIdpDefinitions.put(alias, oidcIdentityProviderDefinition);
@@ -115,7 +124,7 @@ public class OauthIDPWrapperFactoryBean {
 
     public static IdentityProviderWrapper getIdentityProviderWrapper(String origin, AbstractExternalOAuthIdentityProviderDefinition rawDef, IdentityProvider provider, boolean override) {
         provider.setOriginKey(origin);
-        provider.setName("UAA Oauth Identity Provider["+provider.getOriginKey()+"]");
+        provider.setName("UAA Oauth Identity Provider[" + provider.getOriginKey() + "]");
         provider.setActive(true);
         try {
             provider.setConfig(rawDef);
@@ -128,7 +137,7 @@ public class OauthIDPWrapperFactoryBean {
     }
 
     protected void setCommonProperties(Map<String, Object> idpDefinitionMap, AbstractExternalOAuthIdentityProviderDefinition idpDefinition) {
-        idpDefinition.setLinkText((String)idpDefinitionMap.get("linkText"));
+        idpDefinition.setLinkText((String) idpDefinitionMap.get("linkText"));
         idpDefinition.setRelyingPartyId((String) idpDefinitionMap.get("relyingPartyId"));
         idpDefinition.setRelyingPartySecret((String) idpDefinitionMap.get("relyingPartySecret"));
         idpDefinition.setEmailDomain((List<String>) idpDefinitionMap.get("emailDomain"));
@@ -149,8 +158,8 @@ public class OauthIDPWrapperFactoryBean {
         String discoveryUrl = (String) idpDefinitionMap.get("discoveryUrl");
         try {
             OIDCIdentityProviderDefinition oidcIdentityProviderDefinition = null;
-            if (idpDefinition instanceof OIDCIdentityProviderDefinition) {
-                oidcIdentityProviderDefinition = (OIDCIdentityProviderDefinition) idpDefinition;
+            if (idpDefinition instanceof OIDCIdentityProviderDefinition definition) {
+                oidcIdentityProviderDefinition = definition;
                 oidcIdentityProviderDefinition.setAdditionalAuthzParameters(parseAdditionalParameters(idpDefinitionMap));
 
                 if (hasText(discoveryUrl)) {
@@ -169,17 +178,27 @@ public class OauthIDPWrapperFactoryBean {
             throw new IllegalArgumentException("URL is malformed.", e);
         }
         if (idpDefinitionMap.get("clientAuthInBody") instanceof Boolean) {
-            idpDefinition.setClientAuthInBody((boolean)idpDefinitionMap.get("clientAuthInBody"));
+            idpDefinition.setClientAuthInBody((boolean) idpDefinitionMap.get("clientAuthInBody"));
         }
         if (idpDefinitionMap.get("performRpInitiatedLogout") instanceof Boolean) {
-            idpDefinition.setPerformRpInitiatedLogout((boolean)idpDefinitionMap.get("performRpInitiatedLogout"));
+            idpDefinition.setPerformRpInitiatedLogout((boolean) idpDefinitionMap.get("performRpInitiatedLogout"));
+        }
+        if (idpDefinitionMap.get("cacheJwks") instanceof Boolean) {
+            idpDefinition.setCacheJwks((boolean) idpDefinitionMap.get("cacheJwks"));
+        }
+        if (idpDefinitionMap.get("authMethod") instanceof String definedAuthMethod) {
+            if (ClientAuthentication.isMethodSupported(definedAuthMethod)) {
+                idpDefinition.setAuthMethod(definedAuthMethod);
+            } else {
+                throw new IllegalArgumentException("Invalid IdP authentication method");
+            }
         }
     }
 
     private static Map<String, String> parseAdditionalParameters(Map<String, Object> idpDefinitionMap) {
         Map<String, Object> additionalParameters = (Map<String, Object>) idpDefinitionMap.get("additionalAuthzParameters");
         if (additionalParameters != null) {
-            Map<String,String> additionalQueryParameters = new HashMap<>();
+            Map<String, String> additionalQueryParameters = new HashMap<>();
             for (Map.Entry<String, Object> entry : additionalParameters.entrySet()) {
                 String keyEntry = entry.getKey().toLowerCase(Locale.ROOT);
                 String value = null;

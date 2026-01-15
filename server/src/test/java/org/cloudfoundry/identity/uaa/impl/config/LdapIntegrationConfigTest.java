@@ -7,7 +7,7 @@ import org.springframework.core.env.Environment;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class LdapIntegrationConfigTest {
     LdapIntegrationConfig ldapIntegrationConfig;
@@ -18,10 +18,9 @@ class LdapIntegrationConfigTest {
     }
 
     @Test
-    void testSetLdapTimeoutPropertyTo30Minutes() {
+    void setLdapTimeoutPropertyTo30Minutes() {
         Environment env = Mockito.mock(Environment.class);
         Map properties = ldapIntegrationConfig.ldapProperties(env);
-        assertEquals(String.valueOf(30 * 60 * 1000),
-                properties.get("com.sun.jndi.ldap.connect.timeout"));
+        assertThat(properties).containsEntry("com.sun.jndi.ldap.connect.timeout", String.valueOf(30 * 60 * 1000));
     }
 }

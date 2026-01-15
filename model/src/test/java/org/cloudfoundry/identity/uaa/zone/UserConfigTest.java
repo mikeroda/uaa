@@ -1,63 +1,77 @@
 package org.cloudfoundry.identity.uaa.zone;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Set;
 
-import org.junit.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
-public class UserConfigTest {
+class UserConfigTest {
 
     @Test
-    public void testDefaultConfig() {
+    void defaultConfig() {
         UserConfig userConfig = new UserConfig();
-        assertTrue(userConfig.getDefaultGroups().contains("openid"));
-        assertNull(userConfig.getAllowedGroups());       // all groups allowed
-        assertNull(userConfig.resultingAllowedGroups()); // all groups allowed
+        assertThat(userConfig.getDefaultGroups()).contains("openid");
+        assertThat(userConfig.getAllowedGroups()).isNull();       // all groups allowed
+        assertThat(userConfig.resultingAllowedGroups()).isNull(); // all groups allowed
     }
 
     @Test
-    public void testResultingAllowedGroups() {
+    void resultingAllowedGroups() {
         UserConfig userConfig = new UserConfig();
         userConfig.setDefaultGroups(List.of("openid"));
         userConfig.setAllowedGroups(List.of("uaa.user"));
-        assertEquals(List.of("openid"), userConfig.getDefaultGroups());
-        assertEquals(List.of("uaa.user"), userConfig.getAllowedGroups());
-        assertEquals(Set.of("openid", "uaa.user"), userConfig.resultingAllowedGroups());
+        assertThat(userConfig.getDefaultGroups()).isEqualTo(List.of("openid"));
+        assertThat(userConfig.getAllowedGroups()).isEqualTo(List.of("uaa.user"));
+        assertThat(userConfig.resultingAllowedGroups()).isEqualTo(Set.of("openid", "uaa.user"));
     }
 
     @Test
-    public void testNoDefaultGroups() {
+    void noDefaultGroups() {
         UserConfig userConfig = new UserConfig();
         userConfig.setDefaultGroups(null);
         userConfig.setAllowedGroups(List.of("uaa.user"));
-        assertNull(userConfig.getDefaultGroups());
-        assertEquals(List.of("uaa.user"), userConfig.getAllowedGroups());
-        assertEquals(Set.of("uaa.user"), userConfig.resultingAllowedGroups());
+        assertThat(userConfig.getDefaultGroups()).isNull();
+        assertThat(userConfig.getAllowedGroups()).isEqualTo(List.of("uaa.user"));
+        assertThat(userConfig.resultingAllowedGroups()).isEqualTo(Set.of("uaa.user"));
     }
 
     @Test
-    public void testNoDefaultAndNoAllowedGroups() {
+    void noDefaultAndNoAllowedGroups() {
         UserConfig userConfig = new UserConfig();
         userConfig.setDefaultGroups(null);
         userConfig.setAllowedGroups(null);
-        assertNull(userConfig.getDefaultGroups());
-        assertNull(userConfig.getAllowedGroups());       // all groups allowed
-        assertNull(userConfig.resultingAllowedGroups()); // all groups allowed
-    }
-    @Test
-    public void getMaxUsers() {
-      UserConfig userConfig = new UserConfig();
-      assertEquals(-1, userConfig.getMaxUsers());
+        assertThat(userConfig.getDefaultGroups()).isNull();
+        assertThat(userConfig.getAllowedGroups()).isNull();       // all groups allowed
+        assertThat(userConfig.resultingAllowedGroups()).isNull(); // all groups allowed
     }
 
     @Test
-    public void setMaxUsers() {
-      UserConfig userConfig = new UserConfig();
-      userConfig.setMaxUsers(100);
-      assertEquals(100, userConfig.getMaxUsers());
+    void getMaxUsers() {
+        UserConfig userConfig = new UserConfig();
+        assertThat(userConfig.getMaxUsers()).isEqualTo(-1);
+    }
+
+    @Test
+    void setMaxUsers() {
+        UserConfig userConfig = new UserConfig();
+        userConfig.setMaxUsers(100);
+        assertThat(userConfig.getMaxUsers()).isEqualTo(100);
+    }
+
+    @Test
+    void defaultOrigin() {
+        UserConfig userConfig = new UserConfig();
+        assertThat(userConfig.isAllowOriginLoop()).isTrue();
+        assertThat(userConfig.isCheckOriginEnabled()).isFalse();
+    }
+
+    @Test
+    void originLoop() {
+        UserConfig userConfig = new UserConfig();
+        assertThat(userConfig.isAllowOriginLoop()).isTrue();
+        userConfig.setAllowOriginLoop(false);
+        assertThat(userConfig.isCheckOriginEnabled()).isFalse();
     }
 }

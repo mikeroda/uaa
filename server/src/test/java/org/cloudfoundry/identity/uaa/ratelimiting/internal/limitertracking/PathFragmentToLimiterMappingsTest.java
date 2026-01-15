@@ -1,16 +1,15 @@
 package org.cloudfoundry.identity.uaa.ratelimiting.internal.limitertracking;
 
+import org.cloudfoundry.identity.uaa.ratelimiting.core.config.LimiterMapping;
+import org.junit.jupiter.api.Test;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiPredicate;
-import java.util.stream.Collectors;
 
-import org.cloudfoundry.identity.uaa.ratelimiting.core.config.LimiterMapping;
-import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class PathFragmentToLimiterMappingsTest {
 
@@ -19,68 +18,68 @@ class PathFragmentToLimiterMappingsTest {
 
     @Test
     void noLimiterMappings() {
-        mapper = new PathFragmentToLimiterMappings( String::contains );
+        mapper = new PathFragmentToLimiterMappings(String::contains);
 
-        assertTrue( mapper.isEmpty() );
-        assertEquals( 0, mapper.count() );
-        assertEquals( List.of(), streamToPathFragments() );
+        assertThat(mapper.isEmpty()).isTrue();
+        assertThat(mapper.count()).isZero();
+        assertThat(streamToPathFragments()).isEqualTo(List.of());
 
-        assertNull( mapper.get( "significantOther/Wilma/of/Fred" ) );
+        assertThat(mapper.get("significantOther/Wilma/of/Fred")).isNull();
     }
 
     @Test
     void fewLimiterMappings() {
-        PathFragmentToLimiterMapping fred = pftp( "Fred" );
-        PathFragmentToLimiterMapping pebbles = pftp( "Pebbles" );
-        PathFragmentToLimiterMapping wilma = pftp( "Wilma" );
+        PathFragmentToLimiterMapping fred = pftp("Fred");
+        PathFragmentToLimiterMapping pebbles = pftp("Pebbles");
+        PathFragmentToLimiterMapping wilma = pftp("Wilma");
 
-        mapper = new PathFragmentToLimiterMappings( String::contains, fred, pebbles, wilma );
+        mapper = new PathFragmentToLimiterMappings(String::contains, fred, pebbles, wilma);
 
-        assertFalse( mapper.isEmpty() );
-        assertEquals( 3, mapper.count() );
-        assertEquals( List.of( pebbles, wilma, fred ), streamToPathFragments() );
+        assertThat(mapper.isEmpty()).isFalse();
+        assertThat(mapper.count()).isEqualTo(3);
+        assertThat(streamToPathFragments()).isEqualTo(List.of(pebbles, wilma, fred));
 
-        assertEquals( wilma.getLimiterMapping(), mapper.get( "significantOther/Wilma/of/Fred" ) );
+        assertThat(mapper.get("significantOther/Wilma/of/Fred")).isEqualTo(wilma.getLimiterMapping());
     }
 
     @Test
     void getCompares() {
         selector = new Selector();
         List<PathFragmentToLimiterMapping> pftps = new ArrayList<>();
-        for ( int i = 1; i <= 50; i++ ) {
-            addTo( pftps, makePath( 'A', i ) );
-            addTo( pftps, makePath( 'B', i ) );
+        for (int i = 1; i <= 50; i++) {
+            addTo(pftps, makePath('A', i));
+            addTo(pftps, makePath('B', i));
         }
-        mapper = new PathFragmentToLimiterMappings( selector, pftps );
+        mapper = new PathFragmentToLimiterMappings(selector, pftps);
 
-        assertEquals( 2, check( false, "X" ) );
-        assertEquals( 50, check( false, makePath( 'X', 25 ) ) );
-        assertEquals( 100, check( false, makePath( 'X', 50 ) ) );
-        assertEquals( 2, check( true, makePath( 'B', 25 ) ) );
+        assertThat(check(false, "X")).isEqualTo(2);
+        assertThat(check(false, makePath('X', 25))).isEqualTo(50);
+        assertThat(check(false, makePath('X', 50))).isEqualTo(100);
+        assertThat(check(true, makePath('B', 25))).isEqualTo(2);
     }
 
-    private int check( boolean expectedFound, String servletPath ) {
+    private int check(boolean expectedFound, String servletPath) {
         selector.calls = 0;
         Instant start = Instant.now();
-        LimiterMapping found = mapper.get( servletPath );
+        LimiterMapping found = mapper.get(servletPath);
         int calls = selector.calls;
-        System.out.println( Duration.between( start, Instant.now() ).toNanos() + "ns: " + calls + " -> " + servletPath );
-        if ( expectedFound ) {
-            assertNotNull( found );
+        System.out.println(Duration.between(start, Instant.now()).toNanos() + "ns: " + calls + " -> " + servletPath);
+        if (expectedFound) {
+            assertThat(found).isNotNull();
         } else {
-            assertNull( found );
+            assertThat(found).isNull();
         }
         return calls;
     }
 
-    private void addTo( List<PathFragmentToLimiterMapping> collection, String pathFragmentAndName ) {
-        collection.add( pftp( pathFragmentAndName ) );
+    private void addTo(List<PathFragmentToLimiterMapping> collection, String pathFragmentAndName) {
+        collection.add(pftp(pathFragmentAndName));
     }
 
-    private static String makePath( char letter, int count ) {
-        StringBuilder sb = new StringBuilder( count );
-        while ( 0 < count-- ) {
-            sb.append( letter );
+    private static String makePath(char letter, int count) {
+        StringBuilder sb = new StringBuilder(count);
+        while (0 < count--) {
+            sb.append(letter);
         }
         return sb.toString();
     }
@@ -89,22 +88,22 @@ class PathFragmentToLimiterMappingsTest {
         int calls;
 
         @Override
-        public boolean test( String servletPath, String pathFragment ) {
+        public boolean test(String servletPath, String pathFragment) {
             calls++;
-            return servletPath.equals( pathFragment ); // using equals just for testing!
+            return servletPath.equals(pathFragment); // using equals just for testing!
         }
     }
 
-    private static PathFragmentToLimiterMapping pftp( String pathFragmentAndName ) {
-        return new PathFragmentToLimiterMapping( pathFragmentAndName,
-                                                 LimiterMapping.builder()
-                                                         .name( pathFragmentAndName )
-                                                         .pathSelector( "contains:" + pathFragmentAndName )
-                                                         .global( "1r/s" )
-                                                         .build() );
+    private static PathFragmentToLimiterMapping pftp(String pathFragmentAndName) {
+        return new PathFragmentToLimiterMapping(pathFragmentAndName,
+                LimiterMapping.builder()
+                        .name(pathFragmentAndName)
+                        .pathSelector("contains:" + pathFragmentAndName)
+                        .global("1r/s")
+                        .build());
     }
 
     private List<PathFragmentToLimiterMapping> streamToPathFragments() {
-        return mapper.stream().collect( Collectors.toList() );
+        return mapper.stream().toList();
     }
 }
